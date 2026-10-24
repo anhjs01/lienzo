@@ -134,7 +134,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.globalCompositeOperation = 'source-over';
     target.strokeStyle = item.erase ? '#ffffff' : item.color; target.fillStyle = item.erase ? '#ffffff' : item.color; target.lineWidth = item.width; target.lineCap = 'round'; target.lineJoin = 'round';
     if (item.points.length === 1) { target.beginPath(); target.arc(item.points[0]!.x, item.points[0]!.y, item.width / 2, 0, Math.PI * 2); target.fill(); }
-    else { target.beginPath(); target.moveTo(item.points[0]!.x, item.points[0]!.y); item.points.slice(1).forEach(p => target.lineTo(p.x, p.y)); target.stroke(); }
+    else { target.beginPath(); target.moveTo(item.points[0]!.x, item.points[0]!.y); if (item.points.length === 2) target.lineTo(item.points[1]!.x, item.points[1]!.y); else { for (let i = 1; i < item.points.length - 1; i++) { const current = item.points[i]!; const following = item.points[i + 1]!; target.quadraticCurveTo(current.x, current.y, (current.x + following.x) / 2, (current.y + following.y) / 2); } const last = item.points[item.points.length - 1]!; target.lineTo(last.x, last.y); } target.stroke(); }
   } else if (item.kind === 'shape') {
     target.strokeStyle = item.color; target.lineWidth = item.width; target.lineCap = 'round';
     const w = item.to.x - item.from.x, h = item.to.y - item.from.y;
