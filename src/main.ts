@@ -22,6 +22,7 @@ app.innerHTML = `
         <button class="icon-button subtle" id="undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
         <button class="icon-button subtle" id="redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer">↷</button>
         <span class="top-divider"></span>
+        <button class="button button-quiet" id="new-project-btn" title="Crear un documento nuevo">Nuevo</button>
         <button class="button button-quiet" id="import-btn"><span>＋</span> Importar</button>
         <button class="button button-quiet" id="save-project-btn" title="Guardar proyecto editable en este navegador"><span>↓</span> Guardar</button>
         <button class="button button-quiet" id="restore-project-btn" title="Recuperar el último proyecto guardado">Abrir guardado</button>
@@ -439,6 +440,31 @@ function saveProject(): void {
   }
 }
 document.querySelector('#save-project-btn')!.addEventListener('click', saveProject);
+
+function createNewProject(): void {
+  if (items.length && !window.confirm('¿Crear un proyecto nuevo? Los cambios no guardados se perderán. El último guardado seguirá disponible.')) return;
+  items = [];
+  selectedId = null;
+  activeStroke = null;
+  shapeStart = null;
+  previewShape = null;
+  dragStart = null;
+  dragOrigin = null;
+  resizing = false;
+  history = [[]];
+  historyIndex = 0;
+  const name = 'Proyecto sin título';
+  document.querySelector<HTMLInputElement>('#project-name')!.value = name;
+  document.querySelector('#doc-title')!.textContent = name;
+  document.title = `${name} — Lienzo`;
+  document.querySelector('#save-status')!.textContent = 'Documento nuevo';
+  redraw();
+  updateHistoryButtons();
+  showToast('Nuevo proyecto creado; el guardado anterior se conserva');
+}
+document.querySelector('#new-project-btn')!.addEventListener('click', createNewProject);
+
+
 
 async function restoreProject(showMessages = true): Promise<void> {
   try {
