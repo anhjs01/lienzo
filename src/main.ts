@@ -2,10 +2,11 @@ import './style.css';
 
 type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
-type Stroke = { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
-type Shape = { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number };
-type TextItem = { kind: 'text'; at: Point; text: string; color: string; size: number };
-type ImageItem = { kind: 'image'; image: HTMLImageElement };
+type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
+type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
+type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number };
+type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: string; size: number };
+type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number };
 type Item = Stroke | Shape | TextItem | ImageItem;
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -95,6 +96,12 @@ let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
 let historyIndex = 0;
+let selectedId: string | null = null;
+let dragStart: Point | null = null;
+let dragOrigin: Item | null = null;
+let hasMoved = false;
+function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
+function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
 let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
@@ -105,7 +112,8 @@ function pointFromEvent(event: PointerEvent): Point {
   return { x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)), y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)) };
 }
 function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
-  target.save();
+  if (!item.visible) return;
+  target.save(); target.globalAlpha *= item.opacity;
   if (item.kind === 'stroke') {
     target.globalCompositeOperation = 'source-over';
     target.strokeStyle = item.erase ? '#ffffff' : item.color; target.fillStyle = item.erase ? '#ffffff' : item.color; target.lineWidth = item.width; target.lineCap = 'round'; target.lineJoin = 'round';
@@ -123,7 +131,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
     item.text.split('\\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
-    target.drawImage(item.image, 0, 0, canvas.width, canvas.height);
+    target.drawImage(item.image, item.x, item.y, item.width, item.height);
   }
   target.restore();
 }
@@ -133,12 +141,15 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
+  const selected = items.find(item => item.id === selectedId && item.visible);
+  if (selected) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   renderLayers();
+  renderLayerProperties();
 }
 function snapshot(): void {
   history = history.slice(0, historyIndex + 1);
-  history.push([...items]); historyIndex = history.length - 1;
+  history.push(items.map(cloneItem)); historyIndex = history.length - 1;
   if (history.length > 101) { history.shift(); historyIndex--; }
   updateHistoryButtons(); document.querySelector('#save-status')!.textContent = 'Cambios sin guardar';
 }
@@ -146,14 +157,14 @@ function updateHistoryButtons(): void {
   document.querySelector<HTMLButtonElement>('#undo')!.disabled = historyIndex <= 0;
   document.querySelector<HTMLButtonElement>('#redo')!.disabled = historyIndex >= history.length - 1;
 }
-function commitItem(item: Item): void { items.push(item); snapshot(); redraw(); }
+function commitItem(item: Item): void { items.push(item); selectedId = item.id; snapshot(); redraw(); }
 function undo(): void {
   if (historyIndex <= 0) return;
-  historyIndex--; items = [...history[historyIndex]!]; redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
+  historyIndex--; items = history[historyIndex]!.map(cloneItem); selectedId = items.some(item => item.id === selectedId) ? selectedId : null; redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
 }
 function redo(): void {
   if (historyIndex >= history.length - 1) return;
-  historyIndex++; items = [...history[historyIndex]!]; redraw(); updateHistoryButtons(); showToast('Acción restaurada');
+  historyIndex++; items = history[historyIndex]!.map(cloneItem); selectedId = items.some(item => item.id === selectedId) ? selectedId : null; redraw(); updateHistoryButtons(); showToast('Acción restaurada');
 }
 function showToast(message: string): void {
   toast.textContent = message; toast.classList.add('visible');
@@ -170,36 +181,93 @@ function renderLayers(): void {
   const list = document.querySelector<HTMLDivElement>('#layers-list')!;
   list.innerHTML = '';
   items.map((item, i) => ({ item, i })).reverse().forEach(({ item, i }) => {
-    const row = document.createElement('div'); row.className = 'layer-row';
+    const row = document.createElement('div'); row.className = 'layer-row' + (item.id === selectedId ? ' selected' : '') + (!item.visible ? ' layer-hidden' : '');
+    row.tabIndex = 0; row.setAttribute('role', 'button'); row.setAttribute('aria-label', 'Seleccionar capa ' + layerName(item));
+    row.addEventListener('click', () => { selectedId = item.id; redraw(); });
+    row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectedId = item.id; redraw(); } });
     const thumb = document.createElement('span'); thumb.className = 'layer-thumb'; thumb.textContent = item.kind === 'text' ? 'T' : item.kind === 'shape' ? '◇' : item.kind === 'image' ? '▧' : '〰';
     if ('color' in item) thumb.style.color = item.color;
-    const name = document.createElement('span'); name.className = 'layer-name';
-    name.textContent = item.kind === 'text' ? item.text.slice(0, 20) || 'Texto' : item.kind === 'shape' ? ({ line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse' }[item.shape]) : item.kind === 'image' ? 'Imagen importada' : item.erase ? 'Borrado' : 'Trazo';
+    const name = document.createElement('span'); name.className = 'layer-name'; name.textContent = layerName(item);
+    const eye = document.createElement('button'); eye.type = 'button'; eye.className = 'layer-visibility'; eye.textContent = item.visible ? '◉' : '○'; eye.title = item.visible ? 'Ocultar capa' : 'Mostrar capa'; eye.setAttribute('aria-label', eye.title);
+    eye.addEventListener('click', event => { event.stopPropagation(); item.visible = !item.visible; snapshot(); redraw(); });
     const index = document.createElement('span'); index.className = 'layer-index'; index.textContent = String(i + 1).padStart(2, '0');
-    row.append(thumb, name, index); list.append(row);
+    row.append(thumb, name, eye, index); list.append(row);
   });
   document.querySelector('#layer-count')!.textContent = String(items.length + 1).padStart(2, '0');
 }
+function layerName(item: Item): string {
+  if (item.name?.trim()) return item.name.trim();
+  return item.kind === 'text' ? item.text.slice(0, 20) || 'Texto' : item.kind === 'shape' ? ({ line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse' }[item.shape]) : item.kind === 'image' ? 'Imagen importada' : item.erase ? 'Borrado' : 'Trazo';
+}
+function bounds(item: Item): { x: number; y: number; w: number; h: number } {
+  if (item.kind === 'text') { ctx.save(); ctx.font = `600 ${item.size}px sans-serif`; const w = Math.max(30, ...item.text.split('\\n').map(line => ctx.measureText(line).width)); ctx.restore(); return { x: item.at.x, y: item.at.y, w, h: item.size * 1.3 * item.text.split('\\n').length }; }
+  if (item.kind === 'image') return { x: item.x, y: item.y, w: item.width, h: item.height };
+  if (item.kind === 'shape') return { x: Math.min(item.from.x, item.to.x), y: Math.min(item.from.y, item.to.y), w: Math.max(1, Math.abs(item.to.x-item.from.x)), h: Math.max(1, Math.abs(item.to.y-item.from.y)) };
+  const xs = item.points.map(p => p.x), ys = item.points.map(p => p.y), pad = Math.max(8, item.width);
+  return { x: Math.min(...xs)-pad, y: Math.min(...ys)-pad, w: Math.max(1,Math.max(...xs)-Math.min(...xs)+pad*2), h: Math.max(1,Math.max(...ys)-Math.min(...ys)+pad*2) };
+}
+function drawSelection(item: Item): void {
+  const b = bounds(item); ctx.save(); ctx.strokeStyle = '#8065ed'; ctx.lineWidth = 2; ctx.setLineDash([7,4]); ctx.strokeRect(b.x-5,b.y-5,b.w+10,b.h+10); ctx.setLineDash([]); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#8065ed';
+  [[b.x-5,b.y-5],[b.x+b.w+5,b.y-5],[b.x-5,b.y+b.h+5],[b.x+b.w+5,b.y+b.h+5]].forEach(([x,y])=>{ctx.beginPath();ctx.rect(x-4,y-4,8,8);ctx.fill();ctx.stroke();}); ctx.restore();
+}
+function renderLayerProperties(): void {
+  const item = items.find(candidate => candidate.id === selectedId);
+  const controls = document.querySelector<HTMLDivElement>('#layer-properties'); if (!controls) return;
+  controls.hidden = !item;
+  if (!item) return;
+  const nameInput = controls.querySelector<HTMLInputElement>('#layer-name-input')!;
+  const opacityInput = controls.querySelector<HTMLInputElement>('#layer-opacity')!;
+  const opacityOutput = controls.querySelector<HTMLOutputElement>('#opacity-value')!;
+  if (document.activeElement !== nameInput) nameInput.value = item.name ?? layerName(item);
+  opacityInput.value = String(Math.round(item.opacity * 100)); opacityOutput.value = `${opacityInput.value}%`;
+  controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
+  controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
+}
+function moveItem(item: Item, dx: number, dy: number): void {
+  if (item.kind === 'stroke') item.points = item.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+  else if (item.kind === 'shape') { item.from = { x: item.from.x + dx, y: item.from.y + dy }; item.to = { x: item.to.x + dx, y: item.to.y + dy }; }
+  else if (item.kind === 'text') item.at = { x: item.at.x + dx, y: item.at.y + dy };
+  else { item.x += dx; item.y += dy; }
+}
+function hitTest(p: Point): Item | null {
+  for (let i = items.length - 1; i >= 0; i--) { const item = items[i]!; if (!item.visible) continue; const b = bounds(item); if (p.x >= b.x-8 && p.x <= b.x+b.w+8 && p.y >= b.y-8 && p.y <= b.y+b.h+8) return item; }
+  return null;
+}
+function reorderSelected(direction: -1 | 1): void {
+  const index = items.findIndex(item => item.id === selectedId); const next = index + direction;
+  if (index < 0 || next < 0 || next >= items.length) return;
+  [items[index], items[next]] = [items[next]!, items[index]!]; snapshot(); redraw();
+}
+function deleteSelected(): void { const index = items.findIndex(item => item.id === selectedId); if (index < 0) return; items.splice(index,1); selectedId = null; snapshot(); redraw(); showToast('Capa eliminada'); }
 canvas.addEventListener('pointerdown', event => {
-  if (tool === 'select') return;
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
+  if (tool === 'select') {
+    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; hasMoved = false; redraw(); return;
+  }
   if (tool === 'text') {
     const text = window.prompt('Escribe tu texto:');
-    if (text?.trim()) commitItem({ kind: 'text', at: p, text: text.trim(), color: colorInput.value, size: Math.max(16, Number(sizeInput.value) * 6) });
+    if (text?.trim()) commitItem({ ...makeMeta(), kind: 'text', at: p, text: text.trim(), color: colorInput.value, size: Math.max(16, Number(sizeInput.value) * 6) });
     return;
   }
-  if (tool === 'pen' || tool === 'eraser') activeStroke = { kind: 'stroke', points: [p], color: colorInput.value, width: Number(sizeInput.value), erase: tool === 'eraser' };
-  else { shapeStart = p; previewShape = { kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value) }; }
+  if (tool === 'pen' || tool === 'eraser') activeStroke = { ...makeMeta(), kind: 'stroke', points: [p], color: colorInput.value, width: Number(sizeInput.value), erase: tool === 'eraser' };
+  else { shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value) }; }
 });
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
-  if (activeStroke) { activeStroke.points.push(p); redraw(); }
+  if (tool === 'select' && dragStart && selectedId) {
+    const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
+    const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
+    if (Math.abs(dx) + Math.abs(dy) > 1) hasMoved = true;
+    if (dragOrigin) { const origin = cloneItem(dragOrigin); moveItem(origin, dx, dy); Object.assign(item, origin); redraw(); }
+  } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
+  if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
+  dragStart = null; dragOrigin = null; hasMoved = false;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
@@ -224,16 +292,12 @@ fileInput.addEventListener('change', () => {
   if (!file.type.startsWith('image/')) { showToast('Selecciona un archivo de imagen.'); return; }
   const url = URL.createObjectURL(file); const source = new Image();
   source.onload = () => {
-    const layer = document.createElement('canvas'); layer.width = canvas.width; layer.height = canvas.height;
-    const layerCtx = layer.getContext('2d');
-    if (!layerCtx) { URL.revokeObjectURL(url); return; }
     const scale = Math.min(canvas.width / source.width, canvas.height / source.height);
     const width = source.width * scale, height = source.height * scale;
-    layerCtx.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
     const fitted = new Image();
-    fitted.onload = () => { items.push({ kind: 'image', image: fitted }); snapshot(); redraw(); URL.revokeObjectURL(url); showToast('Imagen importada'); };
+    fitted.onload = () => { commitItem({ ...makeMeta(), kind: 'image', image: fitted, x: (canvas.width-width)/2, y: (canvas.height-height)/2, width, height }); URL.revokeObjectURL(url); showToast('Imagen importada'); };
     fitted.onerror = () => { URL.revokeObjectURL(url); showToast('No se pudo procesar esa imagen.'); };
-    fitted.src = layer.toDataURL('image/png');
+    fitted.src = source.src;
   };
   source.onerror = () => { URL.revokeObjectURL(url); showToast('No se pudo abrir esa imagen.'); };
   source.src = url; fileInput.value = '';
