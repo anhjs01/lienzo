@@ -93,7 +93,8 @@ const toast = document.querySelector<HTMLDivElement>('#toast')!;
 const fileInput = document.querySelector<HTMLInputElement>('#file-input')!;
 let tool: Tool = 'select';
 let items: Item[] = [];
-let redoStack: Item[][] = [];
+let history: Item[][] = [[]];
+let historyIndex = 0;
 let activeStroke: Stroke | null = null;
 let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
@@ -135,19 +136,24 @@ function redraw(): void {
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   renderLayers();
 }
-function snapshot(): void { redoStack = []; updateHistoryButtons(); document.querySelector('#save-status')!.textContent = 'Cambios sin guardar'; }
+function snapshot(): void {
+  history = history.slice(0, historyIndex + 1);
+  history.push([...items]); historyIndex = history.length - 1;
+  if (history.length > 101) { history.shift(); historyIndex--; }
+  updateHistoryButtons(); document.querySelector('#save-status')!.textContent = 'Cambios sin guardar';
+}
 function updateHistoryButtons(): void {
-  document.querySelector<HTMLButtonElement>('#undo')!.disabled = items.length === 0;
-  document.querySelector<HTMLButtonElement>('#redo')!.disabled = redoStack.length === 0;
+  document.querySelector<HTMLButtonElement>('#undo')!.disabled = historyIndex <= 0;
+  document.querySelector<HTMLButtonElement>('#redo')!.disabled = historyIndex >= history.length - 1;
 }
 function commitItem(item: Item): void { items.push(item); snapshot(); redraw(); }
 function undo(): void {
-  const item = items.pop(); if (!item) return;
-  redoStack.push([item]); redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
+  if (historyIndex <= 0) return;
+  historyIndex--; items = [...history[historyIndex]!]; redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
 }
 function redo(): void {
-  const state = redoStack.pop(); if (!state) return;
-  items.push(...state); redraw(); updateHistoryButtons(); showToast('Acción restaurada');
+  if (historyIndex >= history.length - 1) return;
+  historyIndex++; items = [...history[historyIndex]!]; redraw(); updateHistoryButtons(); showToast('Acción restaurada');
 }
 function showToast(message: string): void {
   toast.textContent = message; toast.classList.add('visible');
@@ -203,7 +209,7 @@ document.querySelector('#undo')!.addEventListener('click', undo);
 document.querySelector('#redo')!.addEventListener('click', redo);
 document.querySelector('#clear')!.addEventListener('click', () => {
   if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
-    if (items.length) { redoStack.push([...items]); items = []; redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
+    if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
   }
 });
 colorInput.addEventListener('input', () => { colorValue.textContent = colorInput.value.toUpperCase(); });
