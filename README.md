@@ -5,7 +5,7 @@ Editor gráfico web profesional, construido desde cero con TypeScript y Vite.
 ## Estado
 **Fase 3 — Herramientas creativas y edición de imágenes (en desarrollo).**
 
-La aplicación se desarrolla por fases verificables. La base actual permite dibujar, añadir formas, texto e imágenes, seleccionar y mover objetos, redimensionarlos desde sus tiradores, administrar capas, ajustar opacidad, aplicar filtros visuales a imágenes importadas y exportar PNG. La validación automática de compilación está configurada; cada fase debe probarse en el navegador antes de considerarse terminada.
+La aplicación se desarrolla por fases verificables. La base actual permite dibujar, añadir formas, texto e imágenes, seleccionar y mover objetos, redimensionarlos desde sus tiradores, administrar capas, ajustar opacidad, rellenar rectángulos y elipses con su color actual, aplicar filtros visuales a imágenes importadas y exportar PNG. La validación automática de compilación está configurada; cada fase debe probarse en el navegador antes de considerarse terminada.
 
 ## Desarrollo
 - Node.js 20.19+ o 22.12+
