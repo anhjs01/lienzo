@@ -146,7 +146,10 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
+    const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
+    target.filter = filters[item.filter] ?? 'none';
     target.drawImage(item.image, item.x, item.y, item.width, item.height);
+    target.filter = 'none';
   }
   target.restore();
 }
@@ -240,7 +243,8 @@ function renderLayerProperties(): void {
   else if (item.kind === 'text' && document.activeElement !== sizeInput) { sizeInput.value = String(Math.max(1, Math.min(40, Math.round(item.size / 6)))); sizeValue.value = `${sizeInput.value} px`; }
   controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
   controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
-  controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';\n  const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;\n  filterControl.hidden = item.kind !== 'image';\n  if (item.kind === 'image') {\n    const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;\n    if (document.activeElement !== filterInput) filterInput.value = item.filter;\n  }
+  controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';
+  const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;\n  filterControl.hidden = item.kind !== 'image';\n  if (item.kind === 'image') {\n    const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;\n    if (document.activeElement !== filterInput) filterInput.value = item.filter;\n  }
 }
 function moveItem(item: Item, dx: number, dy: number): void {
   if (item.kind === 'stroke') item.points = item.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -350,7 +354,9 @@ function editSelectedText(): void {
   if (next === null || !next.trim()) return;
   item.text = next.trim(); snapshot(); redraw();
 }
-document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);\ndocument.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {\n  const item = items.find(candidate => candidate.id === selectedId);\n  if (!item || item.kind !== 'image') return;\n  item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;\n  snapshot(); redraw(); showToast('Filtro de imagen aplicado');\n});
+document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);
+document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {\n  const item = items.find(candidate => candidate.id === selectedId);\n  if (!item || item.kind !== 'image') return;\n  item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;\n  snapshot(); redraw(); showToast('Filtro de imagen aplicado');
+});
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
   if (!item || item.kind !== 'text') return;
