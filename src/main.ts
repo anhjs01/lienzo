@@ -107,8 +107,8 @@ function pointFromEvent(event: PointerEvent): Point {
 function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   target.save();
   if (item.kind === 'stroke') {
-    target.globalCompositeOperation = item.erase ? 'destination-out' : 'source-over';
-    target.strokeStyle = item.color; target.fillStyle = item.color; target.lineWidth = item.width; target.lineCap = 'round'; target.lineJoin = 'round';
+    target.globalCompositeOperation = 'source-over';
+    target.strokeStyle = item.erase ? '#ffffff' : item.color; target.fillStyle = item.erase ? '#ffffff' : item.color; target.lineWidth = item.width; target.lineCap = 'round'; target.lineJoin = 'round';
     if (item.points.length === 1) { target.beginPath(); target.arc(item.points[0]!.x, item.points[0]!.y, item.width / 2, 0, Math.PI * 2); target.fill(); }
     else { target.beginPath(); target.moveTo(item.points[0]!.x, item.points[0]!.y); item.points.slice(1).forEach(p => target.lineTo(p.x, p.y)); target.stroke(); }
   } else if (item.kind === 'shape') {
