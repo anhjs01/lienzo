@@ -23,6 +23,8 @@ app.innerHTML = `
         <button class="icon-button subtle" id="redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer">↷</button>
         <span class="top-divider"></span>
         <button class="button button-quiet" id="import-btn"><span>＋</span> Importar</button>
+        <button class="button button-quiet" id="save-project-btn" title="Guardar proyecto editable en este navegador"><span>↓</span> Guardar</button>
+        <button class="button button-quiet" id="restore-project-btn" title="Recuperar el último proyecto guardado">Abrir guardado</button>
         <button class="button button-primary" id="export-btn"><span>↗</span> Exportar</button>
       </div>
     </header>
