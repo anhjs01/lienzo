@@ -28,3 +28,10 @@
 .edit-text-button{width:100%;margin-top:8px}
 .edit-text-button[hidden]{display:none}
 @media(max-width:640px){.layer-properties{padding:12px}.layer-actions button{font-size:10px;padding:9px 3px}}
+
+/* Fase 3: inspector de filtros de imagen */
+.image-filter-control{margin:2px 0 12px}
+.image-filter-control[hidden]{display:none}
+.image-filter-control .field-label{margin-bottom:8px}
+.image-filter-control select.text-field{appearance:auto;cursor:pointer;color:#e7e5ed}
+.filter-note{font-size:9px;line-height:1.55;color:#777681;margin:8px 1px 0}
