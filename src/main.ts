@@ -307,6 +307,10 @@ canvas.addEventListener('pointermove', event => {
       } else moveItem(origin, dx, dy);
       Object.assign(item, origin); redraw();
     }
+  } else if (tool === 'select') {
+    const selected = items.find(item => item.id === selectedId && item.visible);
+    if (selected) { const b = bounds(selected); canvas.style.cursor = Math.abs(p.x-(b.x+b.w)) <= 12 && Math.abs(p.y-(b.y+b.h)) <= 12 ? 'nwse-resize' : hitTest(p) ? 'move' : 'default'; }
+    else canvas.style.cursor = 'default';
   } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
