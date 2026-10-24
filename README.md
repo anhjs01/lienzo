@@ -3,9 +3,9 @@
 Editor gráfico web profesional, construido desde cero con TypeScript y Vite.
 
 ## Estado
-**Fase 1 — Fundación del proyecto y primera superficie de edición.**
+**Fase 2 — Objetos seleccionables y capas editables (en desarrollo).**
 
-La aplicación se desarrollará por fases verificables. El objetivo inicial es establecer una base modular y una experiencia de edición funcional antes de ampliar las herramientas.
+La aplicación se desarrolla por fases verificables. La base actual permite dibujar, añadir formas, texto e imágenes, seleccionar y mover objetos, redimensionarlos desde el tirador inferior derecho, administrar capas y exportar PNG. La validación automática de compilación está configurada; cada fase debe probarse en el navegador antes de considerarse terminada.
 
 ## Desarrollo
 - Node.js 20.19+ o 22.12+
