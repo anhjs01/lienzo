@@ -142,7 +142,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.stroke();
   } else if (item.kind === 'text') {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
-    item.text.split('\\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
+    item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
     target.drawImage(item.image, item.x, item.y, item.width, item.height);
   }
@@ -213,7 +213,7 @@ function layerName(item: Item): string {
   return item.kind === 'text' ? item.text.slice(0, 20) || 'Texto' : item.kind === 'shape' ? ({ line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse' }[item.shape]) : item.kind === 'image' ? 'Imagen importada' : item.erase ? 'Borrado' : 'Trazo';
 }
 function bounds(item: Item): { x: number; y: number; w: number; h: number } {
-  if (item.kind === 'text') { ctx.save(); ctx.font = `600 ${item.size}px sans-serif`; const w = Math.max(30, ...item.text.split('\\n').map(line => ctx.measureText(line).width)); ctx.restore(); return { x: item.at.x, y: item.at.y, w, h: item.size * 1.3 * item.text.split('\\n').length }; }
+  if (item.kind === 'text') { ctx.save(); ctx.font = `600 ${item.size}px sans-serif`; const w = Math.max(30, ...item.text.split('\n').map(line => ctx.measureText(line).width)); ctx.restore(); return { x: item.at.x, y: item.at.y, w, h: item.size * 1.3 * item.text.split('\n').length }; }
   if (item.kind === 'image') return { x: item.x, y: item.y, w: item.width, h: item.height };
   if (item.kind === 'shape') return { x: Math.min(item.from.x, item.to.x), y: Math.min(item.from.y, item.to.y), w: Math.max(1, Math.abs(item.to.x-item.from.x)), h: Math.max(1, Math.abs(item.to.y-item.from.y)) };
   const xs = item.points.map(p => p.x), ys = item.points.map(p => p.y), pad = Math.max(8, item.width);
