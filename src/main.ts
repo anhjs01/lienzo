@@ -233,6 +233,9 @@ function renderLayerProperties(): void {
   const opacityOutput = controls.querySelector<HTMLOutputElement>('#opacity-value')!;
   if (document.activeElement !== nameInput) nameInput.value = item.name ?? layerName(item);
   opacityInput.value = String(Math.round(item.opacity * 100)); opacityOutput.value = `${opacityInput.value}%`;
+  if ('color' in item && document.activeElement !== colorInput) { colorInput.value = item.color; colorValue.textContent = item.color.toUpperCase(); }
+  if ((item.kind === 'stroke' || item.kind === 'shape') && document.activeElement !== sizeInput) { sizeInput.value = String(Math.max(1, Math.min(40, item.width))); sizeValue.value = `${sizeInput.value} px`; }
+  else if (item.kind === 'text' && document.activeElement !== sizeInput) { sizeInput.value = String(Math.max(1, Math.min(40, Math.round(item.size / 6)))); sizeValue.value = `${sizeInput.value} px`; }
   controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
   controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
   controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';
