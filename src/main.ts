@@ -353,8 +353,25 @@ document.querySelector('#clear')!.addEventListener('click', () => {
     if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
   }
 });
-colorInput.addEventListener('input', () => { colorValue.textContent = colorInput.value.toUpperCase(); });
-sizeInput.addEventListener('input', () => { sizeValue.value = `${sizeInput.value} px`; });
+colorInput.addEventListener('input', () => {
+  colorValue.textContent = colorInput.value.toUpperCase();
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (item && 'color' in item && !(item.kind === 'stroke' && item.erase)) { item.color = colorInput.value; redraw(); }
+});
+colorInput.addEventListener('change', () => {
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (item && 'color' in item && !(item.kind === 'stroke' && item.erase)) snapshot();
+});
+sizeInput.addEventListener('input', () => {
+  sizeValue.value = `${sizeInput.value} px`;
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (item && (item.kind === 'stroke' || item.kind === 'shape')) { item.width = Number(sizeInput.value); redraw(); }
+  else if (item?.kind === 'text') { item.size = Math.max(8, Number(sizeInput.value) * 6); redraw(); }
+});
+sizeInput.addEventListener('change', () => {
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (item && (item.kind === 'stroke' || item.kind === 'shape' || item.kind === 'text')) snapshot();
+});
 document.querySelector<HTMLInputElement>('#project-name')!.addEventListener('input', event => {
   const value = (event.currentTarget as HTMLInputElement).value.trim() || 'Proyecto sin título';
   document.querySelector('#doc-title')!.textContent = value; document.title = `${value} — Lienzo`;
