@@ -413,6 +413,33 @@ document.querySelector<HTMLInputElement>('#project-name')!.addEventListener('inp
   const value = (event.currentTarget as HTMLInputElement).value.trim() || 'Proyecto sin título';
   document.querySelector('#doc-title')!.textContent = value; document.title = `${value} — Lienzo`;
 });
+
+const PROJECT_STORAGE_KEY = 'lienzo-studio-project-v1';
+function saveProject(): void {
+  try {
+    const project = { version: 1, name: document.querySelector<HTMLInputElement>('#project-name')!.value, width: canvas.width, height: canvas.height, items: items.map(item => {
+      if (item.kind === 'image') {
+        const imageCanvas = document.createElement('canvas');
+        imageCanvas.width = item.image.naturalWidth || item.image.width;
+        imageCanvas.height = item.image.naturalHeight || item.image.height;
+        const imageContext = imageCanvas.getContext('2d');
+        if (!imageContext) throw new Error('No se pudo preparar una imagen');
+        imageContext.drawImage(item.image, 0, 0);
+        const { image, ...rest } = item;
+        return { ...rest, imageData: image.src.startsWith('data:') ? image.src : imageCanvas.toDataURL('image/png') };
+      }
+      return cloneItem(item);
+    }) };
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
+    document.querySelector('#save-status')!.textContent = 'Guardado en este dispositivo';
+    showToast('Proyecto editable guardado');
+  } catch (error) {
+    console.error(error);
+    showToast('No se pudo guardar. Prueba con imágenes más pequeñas.');
+  }
+}
+document.querySelector('#save-project-btn')!.addEventListener('click', saveProject);
+
 document.querySelector('#import-btn')!.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0]; if (!file) return;
