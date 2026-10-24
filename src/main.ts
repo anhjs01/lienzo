@@ -84,6 +84,7 @@ app.innerHTML = `
             <div class="layer-actions">
               <button type="button" id="layer-up" title="Subir capa">↑ Orden</button>
               <button type="button" id="layer-down" title="Bajar capa">↓ Orden</button>
+              <button type="button" id="layer-duplicate" title="Duplicar capa (Ctrl+D)">Duplicar</button>
               <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
             </div>
             <label id="shape-fill-control" class="shape-fill-control" hidden><input id="shape-fill" type="checkbox" /> Rellenar forma con el color actual</label>
@@ -290,6 +291,22 @@ function reorderSelected(direction: -1 | 1): void {
   if (index < 0 || next < 0 || next >= items.length) return;
   [items[index], items[next]] = [items[next]!, items[index]!]; snapshot(); redraw();
 }
+function duplicateSelected(): void {
+  const source = items.find(item => item.id === selectedId);
+  if (!source) { showToast('Selecciona una capa para duplicarla'); return; }
+  const copy = cloneItem(source);
+  copy.id = crypto.randomUUID();
+  copy.name = `${layerName(source)} — copia`;
+  moveItem(copy, 24, 24);
+  const b = bounds(copy);
+  if (b.x + b.w > canvas.width) moveItem(copy, canvas.width - (b.x + b.w), 0);
+  if (b.y + b.h > canvas.height) moveItem(copy, 0, canvas.height - (b.y + b.h));
+  items.push(copy);
+  selectedId = copy.id;
+  snapshot();
+  redraw();
+  showToast('Capa duplicada');
+}
 function deleteSelected(): void { const index = items.findIndex(item => item.id === selectedId); if (index < 0) return; items.splice(index,1); selectedId = null; snapshot(); redraw(); showToast('Capa eliminada'); }
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
@@ -360,6 +377,7 @@ document.querySelector<HTMLInputElement>('#layer-opacity')!.addEventListener('ch
 document.querySelector('#layer-up')!.addEventListener('click', () => reorderSelected(1));
 document.querySelector('#layer-down')!.addEventListener('click', () => reorderSelected(-1));
 document.querySelector('#layer-delete')!.addEventListener('click', deleteSelected);
+document.querySelector('#layer-duplicate')!.addEventListener('click', duplicateSelected);
 function editSelectedText(): void {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'text') return;
@@ -620,6 +638,7 @@ document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement;
   const typing = target.matches('input, textarea, select') || target.isContentEditable;
   const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateSelected(); return; }
   if (modifier && event.key.toLowerCase() === 's') {
     event.preventDefault();
     saveProject();
