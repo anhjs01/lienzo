@@ -244,7 +244,12 @@ function renderLayerProperties(): void {
   controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
   controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
   controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';
-  const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;\n  filterControl.hidden = item.kind !== 'image';\n  if (item.kind === 'image') {\n    const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;\n    if (document.activeElement !== filterInput) filterInput.value = item.filter;\n  }
+  const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;
+  filterControl.hidden = item.kind !== 'image';
+  if (item.kind === 'image') {
+    const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
+    if (document.activeElement !== filterInput) filterInput.value = item.filter;
+  }
 }
 function moveItem(item: Item, dx: number, dy: number): void {
   if (item.kind === 'stroke') item.points = item.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -355,7 +360,11 @@ function editSelectedText(): void {
   item.text = next.trim(); snapshot(); redraw();
 }
 document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);
-document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {\n  const item = items.find(candidate => candidate.id === selectedId);\n  if (!item || item.kind !== 'image') return;\n  item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;\n  snapshot(); redraw(); showToast('Filtro de imagen aplicado');
+document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (!item || item.kind !== 'image') return;
+  item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
+  snapshot(); redraw(); showToast('Filtro de imagen aplicado');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
