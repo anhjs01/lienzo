@@ -6,7 +6,8 @@ type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string 
 type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
 type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number };
 type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: string; size: number };
-type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number };
+type ImageFilter = 'none' | 'grayscale' | 'sepia' | 'contrast' | 'saturate' | 'blur';
+type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter };
 type Item = Stroke | Shape | TextItem | ImageItem;
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -82,6 +83,7 @@ app.innerHTML = `
               <button type="button" id="layer-down" title="Bajar capa">↓ Orden</button>
               <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
             </div>
+            <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro de imagen</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">El filtro se conserva al exportar el diseño como PNG.</p></div>
             <button type="button" id="edit-text" class="edit-text-button" hidden>Editar contenido del texto</button>
           </div>
           <p class="layers-note">Selecciona una capa para moverla, renombrarla, ajustar su opacidad o cambiar su orden.</p>
@@ -238,7 +240,7 @@ function renderLayerProperties(): void {
   else if (item.kind === 'text' && document.activeElement !== sizeInput) { sizeInput.value = String(Math.max(1, Math.min(40, Math.round(item.size / 6)))); sizeValue.value = `${sizeInput.value} px`; }
   controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
   controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
-  controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';
+  controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';\n  const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;\n  filterControl.hidden = item.kind !== 'image';\n  if (item.kind === 'image') {\n    const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;\n    if (document.activeElement !== filterInput) filterInput.value = item.filter;\n  }
 }
 function moveItem(item: Item, dx: number, dy: number): void {
   if (item.kind === 'stroke') item.points = item.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -348,7 +350,7 @@ function editSelectedText(): void {
   if (next === null || !next.trim()) return;
   item.text = next.trim(); snapshot(); redraw();
 }
-document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);
+document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);\ndocument.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {\n  const item = items.find(candidate => candidate.id === selectedId);\n  if (!item || item.kind !== 'image') return;\n  item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;\n  snapshot(); redraw(); showToast('Filtro de imagen aplicado');\n});
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
   if (!item || item.kind !== 'text') return;
@@ -392,7 +394,7 @@ fileInput.addEventListener('change', () => {
     const scale = Math.min(canvas.width / source.width, canvas.height / source.height);
     const width = source.width * scale, height = source.height * scale;
     const fitted = new Image();
-    fitted.onload = () => { commitItem({ ...makeMeta(), kind: 'image', image: fitted, x: (canvas.width-width)/2, y: (canvas.height-height)/2, width, height }); URL.revokeObjectURL(url); showToast('Imagen importada'); };
+    fitted.onload = () => { commitItem({ ...makeMeta(), kind: 'image', image: fitted, x: (canvas.width-width)/2, y: (canvas.height-height)/2, width, height, filter: 'none' }); URL.revokeObjectURL(url); showToast('Imagen importada'); };
     fitted.onerror = () => { URL.revokeObjectURL(url); showToast('No se pudo procesar esa imagen.'); };
     fitted.src = source.src;
   };
