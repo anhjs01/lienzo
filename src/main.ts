@@ -72,7 +72,19 @@ app.innerHTML = `
           <div class="section-heading"><span>Capas</span><span class="layer-count" id="layer-count">01</span></div>
           <div class="layer-row selected"><span class="layer-thumb">▧</span><span class="layer-name">Fondo del lienzo</span><span class="layer-eye">◉</span></div>
           <div id="layers-list"></div>
-          <p class="layers-note">Tus trazos y formas aparecerán aquí a medida que crees.</p>
+          <div id="layer-properties" class="layer-properties" hidden>
+            <label class="field-label" for="layer-name-input">Nombre de capa</label>
+            <input class="text-field" id="layer-name-input" maxlength="60" value="" />
+            <label class="opacity-label" for="layer-opacity"><span>Opacidad</span><output id="opacity-value">100%</output></label>
+            <input id="layer-opacity" class="opacity-slider" type="range" min="0" max="100" value="100" />
+            <div class="layer-actions">
+              <button type="button" id="layer-up" title="Subir capa">↑ Orden</button>
+              <button type="button" id="layer-down" title="Bajar capa">↓ Orden</button>
+              <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
+            </div>
+            <button type="button" id="edit-text" class="edit-text-button" hidden>Editar contenido del texto</button>
+          </div>
+          <p class="layers-note">Selecciona una capa para moverla, renombrarla, ajustar su opacidad o cambiar su orden.</p>
         </section>
         <div class="inspector-bottom"><span class="inspector-star">✳</span><p><strong>Un espacio, infinitas posibilidades.</strong><span>Tu creatividad marca el límite.</span></p></div>
       </aside>
@@ -274,6 +286,35 @@ canvas.addEventListener('pointercancel', finishPointer);
 
 document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => setTool(el.dataset.tool as Tool)));
 document.querySelector('#undo')!.addEventListener('click', undo);
+document.querySelector<HTMLInputElement>('#layer-name-input')!.addEventListener('change', event => {
+  const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
+  const value = (event.currentTarget as HTMLInputElement).value.trim();
+  item.name = value || undefined; snapshot(); redraw();
+});
+document.querySelector<HTMLInputElement>('#layer-opacity')!.addEventListener('input', event => {
+  const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
+  const value = (event.currentTarget as HTMLInputElement).value;
+  item.opacity = Number(value) / 100;
+  document.querySelector<HTMLOutputElement>('#opacity-value')!.value = value + '%';
+  redraw();
+});
+document.querySelector<HTMLInputElement>('#layer-opacity')!.addEventListener('change', () => { snapshot(); redraw(); });
+document.querySelector('#layer-up')!.addEventListener('click', () => reorderSelected(1));
+document.querySelector('#layer-down')!.addEventListener('click', () => reorderSelected(-1));
+document.querySelector('#layer-delete')!.addEventListener('click', deleteSelected);
+function editSelectedText(): void {
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (!item || item.kind !== 'text') return;
+  const next = window.prompt('Edita el texto:', item.text);
+  if (next === null || !next.trim()) return;
+  item.text = next.trim(); snapshot(); redraw();
+}
+document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);
+canvas.addEventListener('dblclick', event => {
+  const item = hitTest(pointFromEvent(event));
+  if (!item || item.kind !== 'text') return;
+  selectedId = item.id; editSelectedText();
+});
 document.querySelector('#redo')!.addEventListener('click', redo);
 document.querySelector('#clear')!.addEventListener('click', () => {
   if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
