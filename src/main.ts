@@ -126,7 +126,7 @@ let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
 let toastTimer = 0;
 
-function pointFromEvent(event: PointerEvent): Point {
+function pointFromEvent(event: MouseEvent): Point {
   const rect = canvas.getBoundingClientRect();
   return { x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)), y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)) };
 }
