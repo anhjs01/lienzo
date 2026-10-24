@@ -21,7 +21,7 @@
 .opacity-label{display:flex;align-items:center;justify-content:space-between;color:#9998a5;font-size:10px;margin:2px 0 8px}
 .opacity-label output{font:10px 'DM Mono',monospace;color:#c9baff}
 .opacity-slider{width:100%;accent-color:#9a83ff;height:4px;cursor:pointer;margin:0 0 13px}
-.layer-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.layer-actions{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .layer-actions button,.edit-text-button{border:1px solid #393943;background:#26272d;border-radius:7px;color:#c4c1cf;font-size:9px;padding:8px 4px}
 .layer-actions button:hover,.edit-text-button:hover{background:#34313f;border-color:#5a4c78;color:#e8e1ff}
 .layer-actions button:disabled{opacity:.3;cursor:not-allowed}
