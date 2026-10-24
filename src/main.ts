@@ -414,6 +414,7 @@ document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
   const keys: Record<string, Tool> = { v: 'select', b: 'pen', e: 'eraser', l: 'line', r: 'rect', o: 'ellipse', t: 'text' };
   const next = keys[event.key.toLowerCase()]; if (next) setTool(next);
-  if (event.key === 'Escape') { activeStroke = null; shapeStart = null; previewShape = null; redraw(); }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); return; }
+  if (event.key === 'Escape') { activeStroke = null; shapeStart = null; previewShape = null; selectedId = null; dragStart = null; dragOrigin = null; resizing = false; redraw(); }
 });
 redraw(); updateHistoryButtons(); setTool('select');
