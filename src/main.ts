@@ -418,25 +418,41 @@ document.querySelector<HTMLInputElement>('#project-name')!.addEventListener('inp
 const PROJECT_STORAGE_KEY = 'lienzo-studio-project-v1';
 function saveProject(): void {
   try {
-    const project = { version: 1, name: document.querySelector<HTMLInputElement>('#project-name')!.value, width: canvas.width, height: canvas.height, items: items.map(item => {
-      if (item.kind === 'image') {
-        const imageCanvas = document.createElement('canvas');
-        imageCanvas.width = item.image.naturalWidth || item.image.width;
-        imageCanvas.height = item.image.naturalHeight || item.image.height;
-        const imageContext = imageCanvas.getContext('2d');
-        if (!imageContext) throw new Error('No se pudo preparar una imagen');
-        imageContext.drawImage(item.image, 0, 0);
-        const { image, ...rest } = item;
-        return { ...rest, imageData: image.src.startsWith('data:') ? image.src : imageCanvas.toDataURL('image/png') };
-      }
-      return cloneItem(item);
-    }) };
+    const savedItems = items.map(item => {
+      if (item.kind !== 'image') return cloneItem(item);
+      const { image, ...rest } = item;
+      // A data URL is already portable; avoid allocating another canvas for it.
+      const imageData = image.src.startsWith('data:image/')
+        ? image.src
+        : (() => {
+            const imageCanvas = document.createElement('canvas');
+            imageCanvas.width = image.naturalWidth || image.width;
+            imageCanvas.height = image.naturalHeight || image.height;
+            if (!imageCanvas.width || !imageCanvas.height) throw new Error('Imagen sin dimensiones válidas');
+            const imageContext = imageCanvas.getContext('2d');
+            if (!imageContext) throw new Error('No se pudo preparar una imagen');
+            imageContext.drawImage(image, 0, 0);
+            return imageCanvas.toDataURL('image/png');
+          })();
+      return { ...rest, imageData };
+    });
+    const project = {
+      version: 1,
+      name: document.querySelector<HTMLInputElement>('#project-name')!.value.trim() || 'Proyecto sin título',
+      width: canvas.width,
+      height: canvas.height,
+      items: savedItems
+    };
     localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
     document.querySelector('#save-status')!.textContent = 'Guardado en este dispositivo';
     showToast('Proyecto editable guardado');
   } catch (error) {
-    console.error(error);
-    showToast('No se pudo guardar. Prueba con imágenes más pequeñas.');
+    console.error('No se pudo guardar el proyecto:', error);
+    const isQuotaError = error instanceof DOMException &&
+      (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    showToast(isQuotaError
+      ? 'No hay espacio suficiente para guardar. Prueba con imágenes más pequeñas.'
+      : 'No se pudo guardar el proyecto. Comprueba las imágenes e inténtalo de nuevo.');
   }
 }
 document.querySelector('#save-project-btn')!.addEventListener('click', saveProject);
@@ -466,18 +482,75 @@ document.querySelector('#new-project-btn')!.addEventListener('click', createNewP
 
 
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isSavedPoint(value: unknown): value is Point {
+  if (!value || typeof value !== 'object') return false;
+  const point = value as Record<string, unknown>;
+  return isFiniteNumber(point.x) && isFiniteNumber(point.y);
+}
+
+function isSavedLayerMeta(value: Record<string, unknown>): boolean {
+  return typeof value.id === 'string' && value.id.length > 0 &&
+    typeof value.visible === 'boolean' &&
+    isFiniteNumber(value.opacity) && value.opacity >= 0 && value.opacity <= 1 &&
+    (value.name === undefined || typeof value.name === 'string');
+}
+
+function isValidSavedItem(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Record<string, unknown>;
+  if (!isSavedLayerMeta(item)) return false;
+  if (item.kind === 'stroke') {
+    return Array.isArray(item.points) && item.points.length > 0 && item.points.every(isSavedPoint) &&
+      typeof item.color === 'string' && isFiniteNumber(item.width) && item.width > 0 && typeof item.erase === 'boolean';
+  }
+  if (item.kind === 'shape') {
+    return (item.shape === 'line' || item.shape === 'rect' || item.shape === 'ellipse') &&
+      isSavedPoint(item.from) && isSavedPoint(item.to) && typeof item.color === 'string' &&
+      isFiniteNumber(item.width) && item.width > 0 && typeof item.fill === 'boolean';
+  }
+  if (item.kind === 'text') {
+    return isSavedPoint(item.at) && typeof item.text === 'string' && typeof item.color === 'string' &&
+      isFiniteNumber(item.size) && item.size > 0;
+  }
+  if (item.kind === 'image') {
+    return typeof item.imageData === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/i.test(item.imageData) &&
+      isFiniteNumber(item.x) && isFiniteNumber(item.y) && isFiniteNumber(item.width) && item.width > 0 &&
+      isFiniteNumber(item.height) && item.height > 0 &&
+      ['none', 'grayscale', 'sepia', 'contrast', 'saturate', 'blur'].includes(String(item.filter));
+  }
+  return false;
+}
+
 async function restoreProject(showMessages = true): Promise<void> {
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
-    const project = JSON.parse(raw) as { version: number; name: string; width: number; height: number; items: Record<string, unknown>[] };
-    if (project.version !== 1 || !Array.isArray(project.items) || typeof project.name !== 'string') throw new Error('Formato no compatible');
-    if (project.width !== canvas.width || project.height !== canvas.height) throw new Error('El tamaño del lienzo no coincide');
+    const project = JSON.parse(raw) as {
+      version: number; name: string; width: number; height: number; items: unknown[];
+    };
+    if (project.version !== 1 || !Array.isArray(project.items) || typeof project.name !== 'string' ||
+        !isFiniteNumber(project.width) || !isFiniteNumber(project.height)) {
+      throw new Error('Formato no compatible');
+    }
+    if (project.width !== canvas.width || project.height !== canvas.height) {
+      throw new Error('El tamaño del lienzo no coincide');
+    }
+    if (!project.items.every(isValidSavedItem)) throw new Error('El proyecto contiene elementos no válidos');
+
+    // Build the complete document before replacing the current one, so a broken
+    // image or malformed layer can never leave the canvas half-restored.
     const restored = await Promise.all(project.items.map(async saved => {
       if (saved.kind === 'image') {
-        if (typeof saved.imageData !== 'string') throw new Error('Imagen guardada no válida');
         const image = new Image();
-        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('No se pudo recuperar una imagen')); image.src = saved.imageData as string; });
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error('No se pudo recuperar una imagen'));
+          image.src = saved.imageData as string;
+        });
         const { imageData: _imageData, ...rest } = saved;
         return { ...rest, image } as unknown as Item;
       }
@@ -485,17 +558,25 @@ async function restoreProject(showMessages = true): Promise<void> {
     }));
     items = restored;
     selectedId = null;
+    activeStroke = null;
+    shapeStart = null;
+    previewShape = null;
+    dragStart = null;
+    dragOrigin = null;
+    resizing = false;
     history = [items.map(cloneItem)];
     historyIndex = 0;
-    document.querySelector<HTMLInputElement>('#project-name')!.value = project.name;
-    document.querySelector('#doc-title')!.textContent = project.name;
-    document.title = `${project.name} — Lienzo`;
+    const name = project.name.trim() || 'Proyecto sin título';
+    document.querySelector<HTMLInputElement>('#project-name')!.value = name;
+    document.querySelector('#doc-title')!.textContent = name;
+    document.title = `${name} — Lienzo`;
     document.querySelector('#save-status')!.textContent = 'Proyecto recuperado';
-    redraw(); updateHistoryButtons();
+    redraw();
+    updateHistoryButtons();
     if (showMessages) showToast('Proyecto editable recuperado');
   } catch (error) {
     console.error('No se pudo recuperar el proyecto:', error);
-    if (showMessages) showToast('No se pudo recuperar el proyecto guardado');
+    if (showMessages) showToast('El guardado no es válido o no se pudo recuperar.');
   }
 }
 document.querySelector('#restore-project-btn')!.addEventListener('click', () => { void restoreProject(); });
