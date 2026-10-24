@@ -412,7 +412,9 @@ sizeInput.addEventListener('change', () => {
 });
 document.querySelector<HTMLInputElement>('#project-name')!.addEventListener('input', event => {
   const value = (event.currentTarget as HTMLInputElement).value.trim() || 'Proyecto sin título';
-  document.querySelector('#doc-title')!.textContent = value; document.title = `${value} — Lienzo`;
+  document.querySelector('#doc-title')!.textContent = value;
+  document.title = `${value} — Lienzo`;
+  document.querySelector('#save-status')!.textContent = 'Cambios sin guardar';
 });
 
 const PROJECT_STORAGE_KEY = 'lienzo-studio-project-v1';
@@ -616,13 +618,24 @@ document.querySelector('#close-inspector')!.addEventListener('click', () => docu
 document.querySelector('#mobile-more')!.addEventListener('click', () => document.querySelector('#inspector')!.classList.toggle('mobile-open'));
 document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement;
-  if (target.matches('input, textarea')) return;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); return; }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
+  const typing = target.matches('input, textarea, select') || target.isContentEditable;
+  const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    saveProject();
+    return;
+  }
+  if (typing) return;
+  if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); return; }
+  if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
   const keys: Record<string, Tool> = { v: 'select', b: 'pen', e: 'eraser', l: 'line', r: 'rect', o: 'ellipse', t: 'text' };
-  const next = keys[event.key.toLowerCase()]; if (next) setTool(next);
+  const next = keys[event.key.toLowerCase()];
+  if (next) { setTool(next); return; }
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); return; }
-  if (event.key === 'Escape') { activeStroke = null; shapeStart = null; previewShape = null; selectedId = null; dragStart = null; dragOrigin = null; resizing = false; redraw(); }
+  if (event.key === 'Escape') {
+    activeStroke = null; shapeStart = null; previewShape = null; selectedId = null;
+    dragStart = null; dragOrigin = null; resizing = false; redraw();
+  }
 });
 redraw(); updateHistoryButtons(); setTool('select');
 void restoreProject(false);
