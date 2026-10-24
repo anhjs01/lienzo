@@ -440,10 +440,10 @@ function saveProject(): void {
 }
 document.querySelector('#save-project-btn')!.addEventListener('click', saveProject);
 
-async function restoreProject(): Promise<void> {
+async function restoreProject(showMessages = true): Promise<void> {
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-    if (!raw) { showToast('Todavía no hay un proyecto guardado'); return; }
+    if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
     const project = JSON.parse(raw) as { version: number; name: string; width: number; height: number; items: Record<string, unknown>[] };
     if (project.version !== 1 || !Array.isArray(project.items) || typeof project.name !== 'string') throw new Error('Formato no compatible');
     if (project.width !== canvas.width || project.height !== canvas.height) throw new Error('El tamaño del lienzo no coincide');
@@ -466,10 +466,10 @@ async function restoreProject(): Promise<void> {
     document.title = `${project.name} — Lienzo`;
     document.querySelector('#save-status')!.textContent = 'Proyecto recuperado';
     redraw(); updateHistoryButtons();
-    showToast('Proyecto editable recuperado');
+    if (showMessages) showToast('Proyecto editable recuperado');
   } catch (error) {
     console.error('No se pudo recuperar el proyecto:', error);
-    showToast('No se pudo recuperar el proyecto guardado');
+    if (showMessages) showToast('No se pudo recuperar el proyecto guardado');
   }
 }
 document.querySelector('#restore-project-btn')!.addEventListener('click', () => { void restoreProject(); });
@@ -518,4 +518,4 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { activeStroke = null; shapeStart = null; previewShape = null; selectedId = null; dragStart = null; dragOrigin = null; resizing = false; redraw(); }
 });
 redraw(); updateHistoryButtons(); setTool('select');
-void restoreProject();
+void restoreProject(false);
