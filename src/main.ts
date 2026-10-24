@@ -4,7 +4,7 @@ type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
 type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
 type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
-type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number };
+type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number; fill: boolean };
 type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: string; size: number };
 type ImageFilter = 'none' | 'grayscale' | 'sepia' | 'contrast' | 'saturate' | 'blur';
 type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter };
@@ -83,6 +83,7 @@ app.innerHTML = `
               <button type="button" id="layer-down" title="Bajar capa">↓ Orden</button>
               <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
             </div>
+            <label id="shape-fill-control" class="shape-fill-control" hidden><input id="shape-fill" type="checkbox" /> Rellenar forma con el color actual</label>
             <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro de imagen</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">El filtro se conserva al exportar el diseño como PNG.</p></div>
             <button type="button" id="edit-text" class="edit-text-button" hidden>Editar contenido del texto</button>
           </div>
@@ -141,6 +142,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     if (item.shape === 'line') { target.moveTo(item.from.x, item.from.y); target.lineTo(item.to.x, item.to.y); }
     else if (item.shape === 'rect') target.rect(item.from.x, item.from.y, w, h);
     else target.ellipse(item.from.x + w / 2, item.from.y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2);
+    if (item.fill && item.shape !== 'line') { target.fillStyle = item.color; target.fill(); }
     target.stroke();
   } else if (item.kind === 'text') {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
@@ -244,6 +246,9 @@ function renderLayerProperties(): void {
   controls.querySelector<HTMLButtonElement>('#layer-up')!.disabled = items.indexOf(item) >= items.length - 1;
   controls.querySelector<HTMLButtonElement>('#layer-down')!.disabled = items.indexOf(item) <= 0;
   controls.querySelector<HTMLButtonElement>('#edit-text')!.hidden = item.kind !== 'text';
+  const fillControl = controls.querySelector<HTMLLabelElement>('#shape-fill-control')!;
+  fillControl.hidden = item.kind !== 'shape' || item.shape === 'line';
+  if (item.kind === 'shape' && item.shape !== 'line') controls.querySelector<HTMLInputElement>('#shape-fill')!.checked = item.fill;
   const filterControl = controls.querySelector<HTMLDivElement>('#image-filter-control')!;
   filterControl.hidden = item.kind !== 'image';
   if (item.kind === 'image') {
@@ -302,7 +307,7 @@ canvas.addEventListener('pointerdown', event => {
     return;
   }
   if (tool === 'pen' || tool === 'eraser') activeStroke = { ...makeMeta(), kind: 'stroke', points: [p], color: colorInput.value, width: Number(sizeInput.value), erase: tool === 'eraser' };
-  else { shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value) }; }
+  else { shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value), fill: false }; }
 });
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
@@ -360,6 +365,12 @@ function editSelectedText(): void {
   item.text = next.trim(); snapshot(); redraw();
 }
 document.querySelector('#edit-text')!.addEventListener('click', editSelectedText);
+document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('change', event => {
+  const item = items.find(candidate => candidate.id === selectedId);
+  if (!item || item.kind !== 'shape' || item.shape === 'line') return;
+  item.fill = (event.currentTarget as HTMLInputElement).checked;
+  snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
+});
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
