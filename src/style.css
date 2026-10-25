@@ -42,3 +42,5 @@
 .shape-fill-control input{accent-color:#9a83ff;width:14px;height:14px;flex-shrink:0}
 
 .photo-adjustments{display:grid;gap:13px;margin-top:14px;padding-top:14px;border-top:1px solid #34343b}.photo-adjustment{display:grid;gap:7px;color:#a6a4b0;font-size:10px}.photo-adjustment span{display:flex;justify-content:space-between;align-items:center}.photo-adjustment output{font:10px 'DM Mono',monospace;color:#ded8ff}.photo-adjustment input{width:100%;accent-color:#a18bff;height:3px;cursor:pointer}.filter-note{font-size:9px;line-height:1.5;color:#777681;margin:10px 0 0}
+
+.photo-section-title{margin:5px 0 0;padding-bottom:5px;border-bottom:1px solid #34343b;color:#817d91;font-size:9px;font-weight:700;letter-spacing:1.4px}.photo-adjustments .photo-section-title:not(:first-child){margin-top:9px}
