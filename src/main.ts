@@ -250,7 +250,9 @@ function redraw(): void {
   if(showLassoOverlay&&lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
   renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
-  if (selected) drawSelection(selected);
+  // Keep the selected layer available for photo adjustments, but only show its
+  // transform handles while the object-selection tool is active.
+  if (selected && tool === 'select' && !lassoMoveMode) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   renderLayers();
   renderLayerProperties();
@@ -378,6 +380,10 @@ function setTool(next: Tool): void {
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.classList.toggle('active', el.dataset.tool === next));
   const labels: Record<Tool, string> = { select: 'Seleccionar', lasso: 'Lazo de área', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
   document.querySelector('#tool-label')!.textContent = labels[next];
+  document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => {
+    if (button.dataset.tool === next) button.setAttribute('aria-pressed', 'true');
+    else button.setAttribute('aria-pressed', 'false');
+  });
   canvas.style.cursor = next === 'select' ? 'default' : next === 'text' ? 'text' : 'crosshair';
 }
 function renderLayers(): void {
@@ -514,6 +520,7 @@ function duplicateSelected(): void {
 }
 function deleteSelected(): void { const index = items.findIndex(item => item.id === selectedId); if (index < 0) return; items.splice(index,1); selectedId = null; snapshot(); redraw(); showToast('Capa eliminada'); }
 canvas.addEventListener('pointerdown', event => {
+  canvas.focus({ preventScroll: true });
   canvas.setPointerCapture(event.pointerId);
   if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
   const p = pointFromEvent(event);
