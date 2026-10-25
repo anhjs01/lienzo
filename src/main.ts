@@ -86,7 +86,6 @@ app.innerHTML = `
           <div class="section-heading"><span>Capas</span><span class="layer-count" id="layer-count">01</span></div>
           <div class="layer-row selected"><span class="layer-thumb">▧</span><span class="layer-name">Fondo del lienzo</span><span class="layer-eye">◉</span></div>
           <div id="layers-list"></div>
-          <div id="photo-sidebar-nav" class="photo-quick-nav photo-sidebar-nav" aria-label="Herramientas de edición fotográfica" hidden><button type="button" data-photo-jump="LUZ">☼ Luz</button><button type="button" data-photo-jump="COLOR">◉ Color</button><button type="button" data-photo-jump="MEZCLA DE COLORES">◌ Mezclador</button><button type="button" data-photo-jump="EFECTOS">✧ Efectos</button></div>
           <div id="lasso-layer-panel" class="lasso-layer-panel" hidden><div class="lasso-panel-heading"><span>Selecciones de lazo</span><button type="button" id="lasso-clear" title="Quitar selección activa">Quitar</button></div><p class="lasso-panel-note">Cada lazo es una selección independiente. Activa uno para moverlo o crear una copia sin mover la imagen.</p><div id="lasso-layer-list"></div><div class="lasso-layer-actions"><button type="button" id="lasso-move" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-duplicate">＋ Copiar lazo</button></div></div>
           <div id="layer-properties" class="layer-properties" hidden>
             <label class="field-label" for="layer-name-input">Nombre de capa</label>
@@ -366,7 +365,6 @@ function renderLayerProperties(): void {
   const item = items.find(candidate => candidate.id === selectedId);
   const controls = document.querySelector<HTMLDivElement>('#layer-properties'); if (!controls) return;
   controls.hidden = !item;
-  const photoNav=document.querySelector<HTMLDivElement>('#photo-sidebar-nav');if(photoNav)photoNav.hidden=item?.kind!=='image';
   if (!item) return;
   const nameInput = controls.querySelector<HTMLInputElement>('#layer-name-input')!;
   const opacityInput = controls.querySelector<HTMLInputElement>('#layer-opacity')!;
