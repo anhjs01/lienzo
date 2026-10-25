@@ -176,8 +176,7 @@ let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
 let toastTimer = 0;
 
-function pointFromEvent(event: MouseEvent): Point {
-  const rect = canvas.getBoundingClientRect();
+function pointFromEvent(event: MouseEvent, rect: DOMRect = canvas.getBoundingClientRect()): Point {
   return { x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)), y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)) };
 }
 function rgbToHsl(r:number,g:number,b:number):[number,number,number]{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min,l=(max+min)/2;let h=0,ss=0;if(d){ss=d/(1-Math.abs(2*l-1));if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return[h,ss,l];}
@@ -583,11 +582,12 @@ canvas.addEventListener('pointerdown', event => {
   else { shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value), fill: false }; }
 });
 canvas.addEventListener('pointermove', event => {
-  const p = pointFromEvent(event);
+  const rect = canvas.getBoundingClientRect();
+  const p = pointFromEvent(event, rect);
   if (tool === 'lasso' && lassoDrawing) {
     const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
     for (const sample of events) {
-      const point = pointFromEvent(sample);
+      const point = pointFromEvent(sample, rect);
       const last = lassoPoints[lassoPoints.length - 1];
       if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.8) lassoPoints.push(point);
     }
@@ -612,7 +612,7 @@ canvas.addEventListener('pointermove', event => {
   } else if (activeStroke) {
     const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
     for (const sample of events) {
-      const point = pointFromEvent(sample);
+      const point = pointFromEvent(sample, rect);
       const last = activeStroke.points[activeStroke.points.length - 1];
       if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.65) activeStroke.points.push(point);
     }
