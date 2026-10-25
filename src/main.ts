@@ -17,6 +17,21 @@ const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('No se encontró el contenedor de Lienzo.');
 
 const hslColors: { key: HslColor; label: string }[] = [{key:'red',label:'Rojo'},{key:'orange',label:'Naranja'},{key:'yellow',label:'Amarillo'},{key:'green',label:'Verde'},{key:'aqua',label:'Aqua'},{key:'blue',label:'Azul'},{key:'purple',label:'Púrpura'},{key:'magenta',label:'Magenta'}];
+const hslBaseHue: Record<HslColor, number> = { red: 0, orange: 30, yellow: 60, green: 120, aqua: 180, blue: 220, purple: 275, magenta: 320 };
+function updateHslSliderTrack(input: HTMLInputElement): void {
+  const color = input.dataset.hslColor as HslColor | undefined;
+  const axis = input.dataset.hslAxis;
+  if (!color || !axis) return;
+  const hue = hslBaseHue[color];
+  if (axis === 'h') {
+    const stops = Array.from({ length: 7 }, (_, i) => `hsl(${(hue - 180 + i * 60 + 360) % 360} 85% 55%) ${i * (100 / 6)}%`);
+    input.style.setProperty('--slider-track', `linear-gradient(90deg, ${stops.join(',')})`);
+  } else if (axis === 's') {
+    input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${hue} 0% 52%), hsl(${hue} 45% 52%), hsl(${hue} 100% 50%))`);
+  } else {
+    input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${hue} 100% 0%), hsl(${hue} 85% 50%), hsl(${hue} 100% 100%))`);
+  }
+}
 app.innerHTML = `
   <div class="app-shell">
     <header class="topbar">
@@ -117,7 +132,7 @@ app.innerHTML = `
   </div>
 `;
 const hslHost = document.querySelector<HTMLDivElement>('#hsl-mix-controls');
-if (hslHost) hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color" data-hsl-family="' + color.key + '"><summary><span data-hsl-preview="' + color.key + '" class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join('');
+if (hslHost) { hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color" data-hsl-family="' + color.key + '"><summary><span data-hsl-preview="' + color.key + '" class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join(''); hslHost.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(updateHslSliderTrack); }
 
 document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.photoJump??'';const imageItem=items.find(item=>item.id===selectedId&&item.kind==='image') as ImageItem|undefined;if(!imageItem){showToast('Selecciona primero una capa de imagen para editar '+key.toLowerCase());return;}activePhotoSection=key;const active=lassoSelections.find(selection=>selection.id===activeLassoId)??lassoSelections[lassoSelections.length-1];if(active){activeLassoId=active.id;lassoPoints=active.points.map(p=>({...p}));hiddenLassoIds.delete(active.id);}const target=Array.from(document.querySelectorAll<HTMLElement>('.photo-section-title')).find(el=>el.textContent?.includes(key));if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('photo-section-focus');window.setTimeout(()=>target.classList.remove('photo-section-focus'),900);}document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(b=>b.classList.toggle('active',b===button));redraw();}));
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
@@ -187,7 +202,7 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
     l=Math.max(0,Math.min(1,(l-.5)*contrast+.5));
     ss=Math.max(0,Math.min(1,ss*(saturation+vibrance*(1-ss))));
     let dh=0,ds=0,dl=0;
-    for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const w=Math.max(0,1-hueDistance(h,c.center)/c.range);dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}
+    for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const distance=hueDistance(h,c.center);if(distance>=c.range)continue;const w=(1+Math.cos(Math.PI*distance/c.range))/2;dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}
     let rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));
     if(item.filter==='grayscale'){const y=.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];rgb=[y,y,y];}
     else if(item.filter==='sepia'){const [rr,gg,bb]=rgb;rgb=[Math.min(255,rr*.393+gg*.769+bb*.189),Math.min(255,rr*.349+gg*.686+bb*.168),Math.min(255,rr*.272+gg*.534+bb*.131)];}
@@ -444,7 +459,7 @@ function renderLayerProperties(): void {
   if (item.kind === 'image') {
     const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
     if (document.activeElement !== filterInput) filterInput.value = item.filter;
-    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+((hueBase[color]+mix.h*1.8+360)%360)+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} });
+    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+((hslBaseHue[color]+mix.h*1.8+360)%360)+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} });
     const photoValues: Record<string, number> = { exposure: item.exposure ?? 0, contrastAmount: item.contrastAmount ?? 0, saturationAmount: item.saturationAmount ?? 0, warmth: item.warmth ?? 0, highlights: item.highlights ?? 0, shadows: item.shadows ?? 0, whites: item.whites ?? 0, blacks: item.blacks ?? 0, vibrance: item.vibrance ?? 0, tint: item.tint ?? 0, vignette: item.vignette ?? 0, grain: item.grain ?? 0 };
     Object.entries(photoValues).forEach(([key, value]) => { const input = controls.querySelector<HTMLInputElement>(`[data-photo-adjust="${key}"]`); const output = controls.querySelector<HTMLOutputElement>(`#photo-${({contrastAmount:'contrast', saturationAmount:'saturation', warmth:'warmth', highlights:'highlights', shadows:'shadows', whites:'whites', blacks:'blacks', vibrance:'vibrance', tint:'tint', vignette:'vignette', grain:'grain'} as Record<string,string>)[key] ?? key}-value`); if (input && document.activeElement !== input) input.value = String(value); if (output) output.value = `${value > 0 ? '+' : ''}${value}`; });
   }
@@ -525,7 +540,7 @@ canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
   const p = pointFromEvent(event);
-  if (tool === 'lasso') { activePhotoSection=null; lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
+  if (tool === 'lasso') { activePhotoSection=null; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
@@ -571,7 +586,7 @@ canvas.addEventListener('pointermove', event => {
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
-  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); snapshot(); }
@@ -626,7 +641,7 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
   snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
 });
 document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
-  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+hue+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} redraw(); });
+  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hue=(hslBaseHue[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+hue+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} updateHslSliderTrack(input); redraw(); });
   input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image')commitPhotoAdjustments(item,'Mezcla HSL aplicada; contorno oculto');});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
