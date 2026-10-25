@@ -159,7 +159,7 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
   for(let i=0;i<data.length;i+=4){
     if(data[i+3]===0)continue;
     const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);
-    const selected=pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height);
+    const selected=pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height,lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]));
     if(!selected)continue;
     let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
     r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
