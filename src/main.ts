@@ -127,6 +127,7 @@ let hiddenLassoIds = new Set<string>();
 let lassoMoveMode = false;
 let lassoDragOrigin: Point[] | null = null;
 let lassoDrawing = false;
+let photoCommitVersion = 0;
 let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
@@ -246,6 +247,7 @@ function hideAppliedLasso(message:string): void { lassoSelections.forEach(select
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function commitPhotoAdjustments(item:ImageItem,message:string): void {
   if(!item.visible){showToast('Activa la capa de imagen antes de aplicar ajustes');return;}
+  const commitVersion=++photoCommitVersion;
   const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
   const local=document.createElement('canvas');local.width=width;local.height=height;
   const localContext=local.getContext('2d');
@@ -262,7 +264,7 @@ function commitPhotoAdjustments(item:ImageItem,message:string): void {
   const baked=new Image();
   baked.onload=()=>{
     const currentLassoMatches=activeLassoId===activeAtStart&&lassoPoints.length===lassoAtStart.length&&lassoPoints.every((point,index)=>point.x===lassoAtStart[index]!.x&&point.y===lassoAtStart[index]!.y);
-    if(!items.includes(item)||selectedId!==item.id||!currentLassoMatches){showToast('El ajuste no se aplicó porque cambió la capa o la selección; vuelve a aplicarlo');return;}
+    if(commitVersion!==photoCommitVersion||!items.includes(item)||selectedId!==item.id||!currentLassoMatches){showToast('El ajuste no se aplicó porque cambió la capa o la selección; vuelve a aplicarlo');return;}
     item.image=baked;
     item.filter='none';
     item.exposure=0;item.contrastAmount=0;item.saturationAmount=0;item.warmth=0;
