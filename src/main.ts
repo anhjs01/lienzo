@@ -128,6 +128,7 @@ let lassoMoveMode = false;
 let lassoDragOrigin: Point[] | null = null;
 let lassoDrawing = false;
 let photoCommitVersion = 0;
+let projectRestoreVersion = 0;
 let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
@@ -635,6 +636,7 @@ document.querySelector('#save-project-btn')!.addEventListener('click', saveProje
 function createNewProject(): void {
   if (items.length && !window.confirm('¿Crear un proyecto nuevo? Los cambios no guardados se perderán. El último guardado seguirá disponible.')) return;
   photoCommitVersion++;
+  projectRestoreVersion++;
   items = [];
   selectedId = null;
   activeStroke = null;
@@ -714,6 +716,8 @@ function isValidSavedItem(value: unknown): value is Record<string, unknown> {
 }
 
 async function restoreProject(showMessages = true): Promise<void> {
+  const restoreVersion = ++projectRestoreVersion;
+  photoCommitVersion++;
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
@@ -745,6 +749,7 @@ async function restoreProject(showMessages = true): Promise<void> {
       }
       return saved as unknown as Item;
     }));
+    if (restoreVersion !== projectRestoreVersion) return;
     items = restored;
     lassoSelections = Array.isArray(project.lassoSelections) && project.lassoSelections.every(selection=>selection && typeof selection.id==='string' && typeof selection.name==='string' && Array.isArray(selection.points) && selection.points.length>=3 && selection.points.every(isSavedPoint)) ? project.lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})) : [];
     activeLassoId = lassoSelections.some(selection=>selection.id===project.activeLassoId) ? project.activeLassoId! : (lassoSelections[lassoSelections.length-1]?.id ?? null);
