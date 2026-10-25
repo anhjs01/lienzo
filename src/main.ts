@@ -2,6 +2,7 @@ import './style.css';
 
 type Tool = 'select' | 'lasso' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
 type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
 type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number; fill: boolean };
@@ -144,6 +145,7 @@ let dragStart: Point | null = null;
 let dragOrigin: Item | null = null;
 let hasMoved = false;
 let resizing = false;
+let resizeHandle: ResizeHandle | null = null;
 function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
 function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'image' && item.maskPoints ? { maskPoints: item.maskPoints.map(p => ({ ...p })) } : {}), ...(item.kind === 'image' && item.hslMix ? { hslMix: Object.fromEntries(Object.entries(item.hslMix).map(([k,v]) => [k, v ? { ...v } : v])) as ImageItem['hslMix'] } : {}), ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
@@ -412,6 +414,29 @@ function resizeItem(item: Item, original: Item, sx: number, sy: number): void {
     item.x = b.x; item.y = b.y; item.width = Math.max(1, original.width * sx); item.height = Math.max(1, original.height * sy);
   }
 }
+function resizeBoundsFromHandle(original: {x:number;y:number;w:number;h:number}, handle: ResizeHandle, p: Point): {x:number;y:number;w:number;h:number} {
+  const right=original.x+original.w, bottom=original.y+original.h;
+  let left=original.x, top=original.y, nextRight=right, nextBottom=bottom;
+  if(handle==='nw'||handle==='sw') left=Math.min(p.x,right-12);
+  if(handle==='ne'||handle==='se') nextRight=Math.max(p.x,original.x+12);
+  if(handle==='nw'||handle==='ne') top=Math.min(p.y,bottom-12);
+  if(handle==='sw'||handle==='se') nextBottom=Math.max(p.y,original.y+12);
+  return {x:left,y:top,w:Math.max(12,nextRight-left),h:Math.max(12,nextBottom-top)};
+}
+function resizeItemToBounds(item: Item, original: Item, next: {x:number;y:number;w:number;h:number}): void {
+  const b=bounds(original), sx=next.w/Math.max(1,b.w), sy=next.h/Math.max(1,b.h);
+  const map=(p:Point):Point=>({x:next.x+(p.x-b.x)*sx,y:next.y+(p.y-b.y)*sy});
+  if(item.kind==='stroke'&&original.kind==='stroke'){
+    item.points=original.points.map(map);
+    item.width=Math.max(1,original.width*Math.min(sx,sy));
+  }else if(item.kind==='shape'&&original.kind==='shape'){
+    item.from=map(original.from);item.to=map(original.to);item.width=Math.max(1,original.width*Math.min(sx,sy));
+  }else if(item.kind==='text'&&original.kind==='text'){
+    item.at=map(original.at);item.size=Math.max(8,original.size*Math.max(.1,(sx+sy)/2));
+  }else if(item.kind==='image'&&original.kind==='image'){
+    item.x=next.x;item.y=next.y;item.width=next.w;item.height=next.h;
+  }
+}
 function hitTest(p: Point): Item | null {
   for (let i = items.length - 1; i >= 0; i--) { const item = items[i]!; if (!item.visible) continue; const b = bounds(item); if (p.x >= b.x-8 && p.x <= b.x+b.w+8 && p.y >= b.y-8 && p.y <= b.y+b.h+8) return item; }
   return null;
@@ -442,15 +467,18 @@ canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
   const p = pointFromEvent(event);
-  if (tool === 'lasso') { activePhotoSection=null; hiddenLassoIds.clear(); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
+  if (tool === 'lasso') { activePhotoSection=null; lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) {
       const b = bounds(selected);
-      if (Math.abs(p.x - (b.x + b.w)) <= 12 && Math.abs(p.y - (b.y + b.h)) <= 12) {
-        dragStart = p; dragOrigin = cloneItem(selected); resizing = true; hasMoved = false; redraw(); return;
-      }
+      const handles: {handle:ResizeHandle;x:number;y:number}[] = [
+        {handle:'nw',x:b.x-5,y:b.y-5},{handle:'ne',x:b.x+b.w+5,y:b.y-5},
+        {handle:'sw',x:b.x-5,y:b.y+b.h+5},{handle:'se',x:b.x+b.w+5,y:b.y+b.h+5}
+      ];
+      const handle=handles.find(candidate=>Math.abs(p.x-candidate.x)<=10&&Math.abs(p.y-candidate.y)<=10);
+      if(handle){dragStart=p;dragOrigin=cloneItem(selected);resizing=true;resizeHandle=handle.handle;hasMoved=false;redraw();return;}
     }
     const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; hasMoved = false; redraw(); return;
   }
@@ -472,15 +500,14 @@ canvas.addEventListener('pointermove', event => {
     if (Math.abs(dx) + Math.abs(dy) > 1) hasMoved = true;
     if (dragOrigin) {
       const origin = cloneItem(dragOrigin);
-      if (resizing) {
-        const b = bounds(dragOrigin);
-        resizeItem(origin, dragOrigin, Math.max(0.05, (b.w + dx) / Math.max(1, b.w)), Math.max(0.05, (b.h + dy) / Math.max(1, b.h)));
+      if (resizing && resizeHandle) {
+        resizeItemToBounds(origin, dragOrigin, resizeBoundsFromHandle(bounds(dragOrigin), resizeHandle, p));
       } else moveItem(origin, dx, dy);
       Object.assign(item, origin); redraw();
     }
   } else if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
-    if (selected) { const b = bounds(selected); canvas.style.cursor = Math.abs(p.x-(b.x+b.w)) <= 12 && Math.abs(p.y-(b.y+b.h)) <= 12 ? 'nwse-resize' : hitTest(p) ? 'move' : 'default'; }
+    if (selected) { const b=bounds(selected);const handles: {x:number;y:number;cursor:string}[]=[{x:b.x-5,y:b.y-5,cursor:'nwse-resize'},{x:b.x+b.w+5,y:b.y-5,cursor:'nesw-resize'},{x:b.x-5,y:b.y+b.h+5,cursor:'nesw-resize'},{x:b.x+b.w+5,y:b.y+b.h+5,cursor:'nwse-resize'}];const handle=handles.find(candidate=>Math.abs(p.x-candidate.x)<=10&&Math.abs(p.y-candidate.y)<=10);canvas.style.cursor=handle?.cursor??(hitTest(p)?'move':'default'); }
     else canvas.style.cursor = 'default';
   } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
@@ -491,7 +518,7 @@ function finishPointer(): void {
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
-  dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false;
+  dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false; resizeHandle = null;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
