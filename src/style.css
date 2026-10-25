@@ -40,3 +40,5 @@
 .shape-fill-control{display:flex;align-items:center;gap:8px;margin:0 0 12px;color:#b7b4c2;font-size:10px;line-height:1.45;cursor:pointer}
 .shape-fill-control[hidden]{display:none}
 .shape-fill-control input{accent-color:#9a83ff;width:14px;height:14px;flex-shrink:0}
+
+.photo-adjustments{display:grid;gap:13px;margin-top:14px;padding-top:14px;border-top:1px solid #34343b}.photo-adjustment{display:grid;gap:7px;color:#a6a4b0;font-size:10px}.photo-adjustment span{display:flex;justify-content:space-between;align-items:center}.photo-adjustment output{font:10px 'DM Mono',monospace;color:#ded8ff}.photo-adjustment input{width:100%;accent-color:#a18bff;height:3px;cursor:pointer}.filter-note{font-size:9px;line-height:1.5;color:#777681;margin:10px 0 0}
