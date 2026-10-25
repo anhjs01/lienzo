@@ -540,8 +540,11 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.focus({ preventScroll: true });
   canvas.setPointerCapture(event.pointerId);
-  if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
   const p = pointFromEvent(event);
+  // A lasso is a temporary selection overlay: keep it only while editing that
+  // area or dragging it, and clear it when the user starts working elsewhere.
+  if (tool !== 'lasso' && lassoPoints.length && (!lassoMoveMode || !pointInLasso(p.x, p.y))) hideLassoOverlay();
+  if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
   if (tool === 'lasso') { activePhotoSection=null; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
