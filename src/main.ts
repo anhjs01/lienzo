@@ -272,6 +272,27 @@ function commitPhotoAdjustments(item:ImageItem,message:string): void {
   let dataUrl:string;
   try { dataUrl=local.toDataURL('image/png'); }
   catch(error) { console.error('No se pudo exportar el ajuste:',error);showToast('No se pudo guardar el resultado del ajuste');return; }
+  const hasLocalSelection=activeAtStart!==null&&lassoAtStart.length>=3;
+  if(hasLocalSelection){
+    // The adjustment renderer produces a full-image preview. Blend it back through
+    // the active lasso so pixels outside the selection remain untouched.
+    const composite=document.createElement('canvas');composite.width=width;composite.height=height;
+    const compositeContext=composite.getContext('2d');
+    if(!compositeContext){showToast('No se pudo preparar la máscara de la selección');return;}
+    compositeContext.drawImage(item.image,0,0,width,height);
+    compositeContext.save();
+    compositeContext.beginPath();
+    compositeContext.moveTo(lassoAtStart[0]!.x-item.x,lassoAtStart[0]!.y-item.y);
+    lassoAtStart.slice(1).forEach(point=>compositeContext.lineTo(point.x-item.x,point.y-item.y));
+    compositeContext.closePath();compositeContext.clip();
+    const adjustedPreview=new Image();
+    adjustedPreview.src=dataUrl;
+    try { compositeContext.drawImage(adjustedPreview,0,0,width,height); }
+    catch(error) { console.error('No se pudo mezclar el ajuste local:',error);showToast('No se pudo aplicar el ajuste a la selección');return; }
+    compositeContext.restore();
+    try { dataUrl=composite.toDataURL('image/png'); }
+    catch(error) { console.error('No se pudo exportar la selección ajustada:',error);showToast('No se pudo guardar el resultado de la selección');return; }
+  }
   const baked=new Image();
   baked.onload=()=>{
     const currentLassoMatches=activeLassoId===activeAtStart&&lassoPoints.length===lassoAtStart.length&&lassoPoints.every((point,index)=>point.x===lassoAtStart[index]!.x&&point.y===lassoAtStart[index]!.y);
