@@ -138,6 +138,8 @@ let projectRestoreVersion = 0;
 let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
+type LassoHistoryState = { selections: { id: string; name: string; points: Point[] }[]; activeId: string | null; points: Point[]; hiddenIds: string[] };
+let lassoHistory: LassoHistoryState[] = [{ selections: [], activeId: null, points: [], hiddenIds: [] }];
 let historyIndex = 0;
 let selectedId: string | null = null;
 let dragStart: Point | null = null;
@@ -251,7 +253,7 @@ function redraw(): void {
   renderLayerProperties();
 }
 function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
-function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
+function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;snapshot();const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
 function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function commitPhotoAdjustments(item:ImageItem,message:string): void {
@@ -298,10 +300,30 @@ function renderLassoLayers(): void {
  lassoSelections.slice().reverse().forEach(selection=>{const row=document.createElement('button');row.type='button';row.className='lasso-layer-row'+(selection.id===activeLassoId?' selected':'');row.innerHTML='<span class="lasso-layer-icon">⌁</span><span></span>';const label=row.querySelector('span:nth-child(2)');if(label)label.textContent=selection.name;row.title='Seleccionar '+selection.name;row.addEventListener('click',()=>activateLasso(selection.id));list.append(row);});
  const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed',String(lassoMoveMode));b.classList.toggle('active',lassoMoveMode);}});
 }
+function captureLassoHistory(): LassoHistoryState {
+  return {
+    selections: lassoSelections.map(selection => ({ id: selection.id, name: selection.name, points: selection.points.map(point => ({ ...point })) })),
+    activeId: activeLassoId,
+    points: lassoPoints.map(point => ({ ...point })),
+    hiddenIds: Array.from(hiddenLassoIds)
+  };
+}
+function restoreLassoHistory(state: LassoHistoryState | undefined): void {
+  const saved = state ?? { selections: [], activeId: null, points: [], hiddenIds: [] };
+  lassoSelections = saved.selections.map(selection => ({ id: selection.id, name: selection.name, points: selection.points.map(point => ({ ...point })) }));
+  activeLassoId = lassoSelections.some(selection => selection.id === saved.activeId) ? saved.activeId : null;
+  lassoPoints = saved.points.map(point => ({ ...point }));
+  hiddenLassoIds = new Set(saved.hiddenIds.filter(id => lassoSelections.some(selection => selection.id === id)));
+  lassoDrawing = false; lassoMoveMode = false; lassoDragOrigin = null;
+  renderLassoLayers();
+}
 function snapshot(): void {
   history = history.slice(0, historyIndex + 1);
-  history.push(items.map(cloneItem)); historyIndex = history.length - 1;
-  if (history.length > 101) { history.shift(); historyIndex--; }
+  lassoHistory = lassoHistory.slice(0, historyIndex + 1);
+  history.push(items.map(cloneItem));
+  lassoHistory.push(captureLassoHistory());
+  historyIndex = history.length - 1;
+  if (history.length > 101) { history.shift(); lassoHistory.shift(); historyIndex--; }
   updateHistoryButtons(); document.querySelector('#save-status')!.textContent = 'Cambios sin guardar';
 }
 function updateHistoryButtons(): void {
@@ -311,11 +333,19 @@ function updateHistoryButtons(): void {
 function commitItem(item: Item): void { items.push(item); selectedId = item.id; snapshot(); redraw(); }
 function undo(): void {
   if (historyIndex <= 0) return;
-  historyIndex--; items = history[historyIndex]!.map(cloneItem); selectedId = items.some(item => item.id === selectedId) ? selectedId : null; redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
+  historyIndex--;
+  items = history[historyIndex]!.map(cloneItem);
+  restoreLassoHistory(lassoHistory[historyIndex]);
+  selectedId = items.some(item => item.id === selectedId) ? selectedId : null;
+  redraw(); updateHistoryButtons(); showToast('Última acción deshecha');
 }
 function redo(): void {
   if (historyIndex >= history.length - 1) return;
-  historyIndex++; items = history[historyIndex]!.map(cloneItem); selectedId = items.some(item => item.id === selectedId) ? selectedId : null; redraw(); updateHistoryButtons(); showToast('Acción restaurada');
+  historyIndex++;
+  items = history[historyIndex]!.map(cloneItem);
+  restoreLassoHistory(lassoHistory[historyIndex]);
+  selectedId = items.some(item => item.id === selectedId) ? selectedId : null;
+  redraw(); updateHistoryButtons(); showToast('Acción restaurada');
 }
 function showToast(message: string): void {
   toast.textContent = message; toast.classList.add('visible');
@@ -511,10 +541,10 @@ canvas.addEventListener('pointermove', event => {
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
-  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
-  if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); }
+  if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); snapshot(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
   dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false; resizeHandle = null;
 }
@@ -527,10 +557,10 @@ document.addEventListener('pointerdown',event=>{const target=event.target;if(!(t
 function toggleLassoMove(): void { if(!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}lassoMoveMode=!lassoMoveMode;setTool('select');renderLassoLayers();showToast(lassoMoveMode?'Modo mover lazo activado: arrastra dentro del contorno':'Modo mover lazo desactivado'); }
 document.querySelector('#lasso-move')!.addEventListener('click',toggleLassoMove);
 document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoMove);
-function duplicateLasso(): void { if(lassoPoints.length<3||!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}const offset=24;const points=lassoPoints.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+offset)),y:Math.max(0,Math.min(canvas.height,point.y+offset))}));const copy={id:crypto.randomUUID(),name:'Lazo copia '+String(lassoSelections.length+1).padStart(2,'0'),points};lassoSelections.push(copy);activeLassoId=copy.id;lassoPoints=points.map(point=>({...point}));lassoMoveMode=true;setTool('select');redraw();showToast('Copia de la selección creada');}
+function duplicateLasso(): void { if(lassoPoints.length<3||!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}const offset=24;const points=lassoPoints.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+offset)),y:Math.max(0,Math.min(canvas.height,point.y+offset))}));const copy={id:crypto.randomUUID(),name:'Lazo copia '+String(lassoSelections.length+1).padStart(2,'0'),points};lassoSelections.push(copy);activeLassoId=copy.id;lassoPoints=points.map(point=>({...point}));lassoMoveMode=true;snapshot();setTool('select');redraw();showToast('Copia de la selección creada');}
 document.querySelector('#lasso-duplicate')!.addEventListener('click',duplicateLasso);
 document.querySelector('#lasso-copy-top')!.addEventListener('click',duplicateLasso);
-function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}hiddenLassoIds.delete(activeLassoId);lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;redraw();showToast('Selección quitada');}
+function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}hiddenLassoIds.delete(activeLassoId);lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;snapshot();redraw();showToast('Selección quitada');}
 document.querySelector('#lasso-clear')!.addEventListener('click',removeActiveLasso);
 document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>clearLassoSelections('Contornos de lazo ocultos'));
 document.querySelector('#undo')!.addEventListener('click', undo);
@@ -693,6 +723,7 @@ function createNewProject(): void {
     if (button) { button.setAttribute('aria-pressed', 'false'); button.classList.remove('active'); }
   });
   history = [[]];
+  lassoHistory = [captureLassoHistory()];
   historyIndex = 0;
   const name = 'Proyecto sin título';
   document.querySelector<HTMLInputElement>('#project-name')!.value = name;
@@ -810,6 +841,7 @@ async function restoreProject(showMessages = true): Promise<void> {
       }
     });
     history = [items.map(cloneItem)];
+    lassoHistory = [captureLassoHistory()];
     historyIndex = 0;
     const name = project.name.trim() || 'Proyecto sin título';
     document.querySelector<HTMLInputElement>('#project-name')!.value = name;
