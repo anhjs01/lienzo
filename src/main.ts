@@ -1,6 +1,6 @@
 import './style.css';
 
-type Tool = 'select' | 'lasso' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
+type Tool = 'select' | 'lasso' | 'object-lasso' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
 type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
@@ -56,7 +56,7 @@ app.innerHTML = `
       <aside class="tool-rail" aria-label="Herramientas">
         <div class="rail-group">
           <button class="tool-button active" data-tool="select" title="Seleccionar (V)" aria-label="Seleccionar"><span class="tool-glyph">↖</span><small>Elegir</small></button>
-          <button class="tool-button" data-tool="lasso" title="Lazo: dibuja un área de selección" aria-label="Lazo"><span class="tool-glyph">⌁</span><small>Lazo</small></button>
+          <button class="tool-button" data-tool="lasso" title="Lazo de área: conserva una selección libre" aria-label="Lazo de área"><span class="tool-glyph">⌁</span><small>Área</small></button>\n          <button class="tool-button" data-tool="object-lasso" title="Lazo de objetos: selecciona una capa dentro del recorrido" aria-label="Lazo de objetos"><span class="tool-glyph">⌘</span><small>Objeto</small></button>
           <button class="tool-button" data-tool="pen" title="Pincel (B)" aria-label="Pincel"><span class="tool-glyph">✎</span><small>Pincel</small></button>
           <button class="tool-button" data-tool="eraser" title="Borrador (E)" aria-label="Borrador"><span class="tool-glyph">⌫</span><small>Borrar</small></button>
           <span class="rail-rule"></span>
@@ -290,7 +290,7 @@ function redraw(updatePanels = true): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
-  const showLassoOverlay = tool === 'lasso' || lassoMoveMode || activePhotoSection !== null;
+  const showLassoOverlay = tool === 'lasso' || tool === 'object-lasso' || lassoMoveMode || activePhotoSection !== null;
   const allLassos = showLassoOverlay ? (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id)) : [];
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
   if(showLassoOverlay&&lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
@@ -424,7 +424,7 @@ function showToast(message: string): void {
 function setTool(next: Tool): void {
   tool = next;
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.classList.toggle('active', el.dataset.tool === next));
-  const labels: Record<Tool, string> = { select: 'Seleccionar', lasso: 'Lazo de área', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
+  const labels: Record<Tool, string> = { select: 'Seleccionar', lasso: 'Lazo de área', 'object-lasso': 'Lazo de objetos', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
   document.querySelector('#tool-label')!.textContent = labels[next];
   document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => {
     if (button.dataset.tool === next) button.setAttribute('aria-pressed', 'true');
@@ -560,9 +560,9 @@ canvas.addEventListener('pointerdown', event => {
   const p = pointFromEvent(event);
   // A lasso is a temporary selection overlay: keep it only while editing that
   // area or dragging it, and clear it when the user starts working elsewhere.
-  if (tool !== 'lasso' && lassoPoints.length && (!lassoMoveMode || !pointInLasso(p.x, p.y))) hideLassoOverlay();
+  if (tool !== 'lasso' && tool !== 'object-lasso' && lassoPoints.length && (!lassoMoveMode || !pointInLasso(p.x, p.y))) hideLassoOverlay();
   if(tool==='select'&&!lassoMoveMode)activePhotoSection=null;
-  if (tool === 'lasso') { activePhotoSection=null; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
+  if (tool === 'lasso' || tool === 'object-lasso') { activePhotoSection=null; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
@@ -588,7 +588,7 @@ canvas.addEventListener('pointerdown', event => {
 canvas.addEventListener('pointermove', event => {
   const rect = canvas.getBoundingClientRect();
   const p = pointFromEvent(event, rect);
-  if (tool === 'lasso' && lassoDrawing) {
+  if ((tool === 'lasso' || tool === 'object-lasso') && lassoDrawing) {
     const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
     for (const sample of events) {
       const point = pointFromEvent(sample, rect);
@@ -624,7 +624,7 @@ canvas.addEventListener('pointermove', event => {
   } else if (shapeStart && previewShape) { previewShape.to = p; scheduleRedraw(false); }
 });
 function finishPointer(): void {
-  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) { lassoPoints=[]; selectedId=null; redraw(); showToast('Recorrido demasiado corto; dibuja un lazo más amplio'); } else if (tool === 'object-lasso') { const polygon=lassoPoints.map(point=>({...point})); const found=items.slice().reverse().find(item=>{if(!item.visible)return false;const b=bounds(item);const probes=[{x:b.x+b.w/2,y:b.y+b.h/2},{x:b.x,y:b.y},{x:b.x+b.w,y:b.y},{x:b.x,y:b.y+b.h},{x:b.x+b.w,y:b.y+b.h}];return probes.some(point=>pointInLasso(point.x,point.y,polygon));}); selectedId=found?.id??null;lassoPoints=[];activeLassoId=null;lassoDrawing=false;redraw();showToast(found?'Objeto seleccionado: '+layerName(found):'No se encontró ningún objeto dentro del lazo'); } else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); redraw(); showToast('Lazo de área creado. Puedes moverlo o copiarlo desde sus controles.'); } }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); snapshot(); }
