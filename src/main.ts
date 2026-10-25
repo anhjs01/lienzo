@@ -201,12 +201,23 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
-    const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'none', sepia: 'none', contrast: 'none', saturate: 'none', blur: 'blur(2px)' };
-    target.filter = filters[item.filter] ?? 'none';
     const hasAdjustments = (item.filter !== 'none' && item.filter !== 'blur') || [item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint].some(v => typeof v === 'number' && v !== 0) || (!!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0)));
-    if (hasAdjustments) target.drawImage(renderHslImage(item), item.x, item.y, item.width, item.height); else target.drawImage(item.image, item.x, item.y, item.width, item.height);
+    const processed = hasAdjustments ? renderHslImage(item) : item.image;
+    const localMask = lassoPoints.length >= 3 ? lassoPoints : item.maskPoints;
+    target.filter = 'none';
+    if (item.filter === 'blur' && localMask && localMask.length >= 3) {
+      target.drawImage(processed, item.x, item.y, item.width, item.height);
+      target.save(); target.beginPath(); target.moveTo(localMask[0]!.x,localMask[0]!.y); localMask.slice(1).forEach(point=>target.lineTo(point.x,point.y)); target.closePath(); target.clip(); target.filter='blur(2px)'; target.drawImage(processed,item.x,item.y,item.width,item.height); target.restore(); target.filter='none';
+    } else {
+      target.filter = item.filter === 'blur' ? 'blur(2px)' : 'none';
+      target.drawImage(processed, item.x, item.y, item.width, item.height);
+      target.filter = 'none';
+    }
+    target.save();
+    if(localMask&&localMask.length>=3){target.beginPath();target.moveTo(localMask[0]!.x,localMask[0]!.y);localMask.slice(1).forEach(point=>target.lineTo(point.x,point.y));target.closePath();target.clip();}
     if ((item.vignette ?? 0) > 0) { const amount = (item.vignette ?? 0) / 100; const gradient = target.createRadialGradient(item.x + item.width / 2, item.y + item.height / 2, Math.min(item.width, item.height) * 0.12, item.x + item.width / 2, item.y + item.height / 2, Math.max(item.width, item.height) * 0.72); gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(1, `rgba(0,0,0,${amount * 0.72})`); target.save(); target.fillStyle = gradient; target.fillRect(item.x, item.y, item.width, item.height); target.restore(); }
     if ((item.grain ?? 0) > 0) { const amount = (item.grain ?? 0) / 100; const step = Math.max(3, Math.round(7 - amount * 4)); target.save(); target.globalAlpha *= amount * 0.22; for (let y = item.y; y < item.y + item.height; y += step) for (let x = item.x; x < item.x + item.width; x += step) { const noise = ((Math.imul(Math.floor(x) + 1, 374761393) ^ Math.imul(Math.floor(y) + 1, 668265263)) >>> 0) % 2 ? 255 : 0; target.fillStyle = `rgb(${noise},${noise},${noise})`; target.fillRect(x, y, step * 0.45, step * 0.45); } target.restore(); }
+    target.restore();
     target.filter = 'none';
   }
   target.restore();
@@ -323,7 +334,7 @@ function renderLayerProperties(): void {
   if (item.kind === 'image') {
     const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
     if (document.activeElement !== filterInput) filterInput.value = item.filter;
-    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; });
+    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};dot.style.backgroundColor='hsl('+((hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360)+' 78% 52%)';} });
     const photoValues: Record<string, number> = { exposure: item.exposure ?? 0, contrastAmount: item.contrastAmount ?? 0, saturationAmount: item.saturationAmount ?? 0, warmth: item.warmth ?? 0, highlights: item.highlights ?? 0, shadows: item.shadows ?? 0, whites: item.whites ?? 0, blacks: item.blacks ?? 0, vibrance: item.vibrance ?? 0, tint: item.tint ?? 0, vignette: item.vignette ?? 0, grain: item.grain ?? 0 };
     Object.entries(photoValues).forEach(([key, value]) => { const input = controls.querySelector<HTMLInputElement>(`[data-photo-adjust="${key}"]`); const output = controls.querySelector<HTMLOutputElement>(`#photo-${({contrastAmount:'contrast', saturationAmount:'saturation', warmth:'warmth', highlights:'highlights', shadows:'shadows', whites:'whites', blacks:'blacks', vibrance:'vibrance', tint:'tint', vignette:'vignette', grain:'grain'} as Record<string,string>)[key] ?? key}-value`); if (input && document.activeElement !== input) input.value = String(value); if (output) output.value = `${value > 0 ? '+' : ''}${value}`; });
   }
