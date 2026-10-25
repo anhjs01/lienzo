@@ -107,8 +107,9 @@ app.innerHTML = `
   </div>
 `;
 const hslHost = document.querySelector<HTMLDivElement>('#hsl-mix-controls');
-if (hslHost) hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color"><summary><span class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join('');
+if (hslHost) hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color"><summary><span data-hsl-preview="' + color.key + '" class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join('');
 
+document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.photoJump??'';const target=Array.from(document.querySelectorAll<HTMLElement>('.photo-section-title')).find(el=>el.textContent?.includes(key));if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('photo-section-focus');window.setTimeout(()=>target.classList.remove('photo-section-focus'),900);}document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(b=>b.classList.toggle('active',b===button));}));
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 const ctx = canvas.getContext('2d')!;
 const hint = document.querySelector<HTMLDivElement>('#paper-hint')!;
@@ -474,8 +475,8 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
   snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
 });
 document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
-  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; redraw(); });
-  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){snapshot();redraw();}});
+  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;dot.style.backgroundColor='hsl('+hue+' 78% 52%)';} redraw(); });
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){snapshot();clearLassoSelections('Mezcla HSL aplicada; contorno quitado');}});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
   input.addEventListener('input', () => {
@@ -485,13 +486,13 @@ document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input
     item[key] = Number(input.value);
     redraw();
   });
-  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { snapshot(); redraw(); showToast('Ajuste fotográfico aplicado'); } });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { snapshot(); clearLassoSelections('Ajuste aplicado; contorno quitado'); } });
 });
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
   item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
-  snapshot(); redraw(); showToast('Filtro de imagen aplicado');
+  snapshot(); clearLassoSelections('Filtro aplicado; contorno quitado');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
@@ -499,7 +500,7 @@ canvas.addEventListener('dblclick', event => {
   selectedId = item.id; editSelectedText();
 });
 document.querySelector('#redo')!.addEventListener('click', redo);
-window.addEventListener('keydown', event => { if (event.key === 'Escape' && lassoPoints.length) { lassoPoints = []; lassoDrawing = false; redraw(); showToast('Selección de lazo quitada'); } });
+window.addEventListener('keydown', event => { if (event.key === 'Escape' && lassoPoints.length) clearLassoSelections(); });
 document.querySelector('#clear')!.addEventListener('click', () => {
   if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
     if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
