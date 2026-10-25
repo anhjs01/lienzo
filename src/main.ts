@@ -331,7 +331,7 @@ function clearLassoSelections(message='Selección de lazo quitada'): void { lass
 function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function commitAreaAdjustmentsToImages(source:ImageItem,message:string,polygon:Point[]): void {
-  const targets=items.filter((candidate):candidate is ImageItem=>candidate.kind==='image'&&candidate.visible);
+  const targets=items.filter((candidate):candidate is ImageItem=>candidate.kind==='image'&&candidate.visible&&lassoIntersectsBounds(polygon,bounds(candidate)));
   if(!targets.length){showToast('No hay capas de imagen visibles dentro del área');return;}
   const sourceSettings={
     filter:source.filter,exposure:source.exposure,contrastAmount:source.contrastAmount,
