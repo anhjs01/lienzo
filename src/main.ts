@@ -76,7 +76,7 @@ app.innerHTML = `
       <section class="editor-area">
         <div class="editor-toolbar">
           <div class="toolbar-context"><span class="context-kicker">TU ESPACIO CREATIVO</span><strong id="tool-label">Seleccionar</strong></div>
-          <div class="toolbar-options"><div class="lasso-actions" id="lasso-actions" hidden><button type="button" id="lasso-move-top" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-copy-top">Copiar lazo</button><button type="button" id="lasso-hide-top" title="Ocultar contorno">Ocultar</button></div>
+          <div class="toolbar-options"><div class="lasso-actions" id="lasso-actions" hidden><button type="button" id="lasso-move-top" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-copy-top">Copiar lazo</button><button type="button" id="lasso-hide-top" title="Quitar el contorno del lienzo sin borrar la selección guardada">Quitar trazo</button></div>
             <label class="color-control" title="Color"><input id="color" type="color" value="#8067f2" aria-label="Color de herramienta" /><span id="color-value">#8067F2</span></label>
             <span class="option-divider"></span>
             <label class="size-control" for="brush-size"><span>Grosor</span><input id="brush-size" type="range" min="1" max="40" value="5" /><output id="size-value">5 px</output></label>
@@ -674,7 +674,7 @@ document.querySelector('#lasso-duplicate')!.addEventListener('click',duplicateLa
 document.querySelector('#lasso-copy-top')!.addEventListener('click',duplicateLasso);
 function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}hiddenLassoIds.delete(activeLassoId);lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;snapshot();redraw();showToast('Selección quitada');}
 document.querySelector('#lasso-clear')!.addEventListener('click',removeActiveLasso);
-document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>clearLassoSelections('Contornos de lazo ocultos'));
+document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>hideLassoOverlay());
 document.querySelector('#undo')!.addEventListener('click', undo);
 document.querySelector<HTMLInputElement>('#layer-name-input')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
