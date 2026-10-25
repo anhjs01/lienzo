@@ -298,6 +298,7 @@ function clearLassoSelections(message='Selección de lazo quitada'): void { lass
 function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function commitPhotoAdjustments(item:ImageItem,message:string): void {
+  photoPreviewScale = 1;
   if(!item.visible){showToast('Activa la capa de imagen antes de aplicar ajustes');return;}
   const commitVersion=++photoCommitVersion;
   const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
