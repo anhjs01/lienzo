@@ -245,21 +245,24 @@ function clearLassoSelections(message='Selección de lazo quitada'): void { lass
 function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function commitPhotoAdjustments(item:ImageItem,message:string): void {
+  if(!item.visible){showToast('Activa la capa de imagen antes de aplicar ajustes');return;}
   const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
-  const full=document.createElement('canvas');full.width=canvas.width;full.height=canvas.height;
-  const fullContext=full.getContext('2d');
-  if(!fullContext){showToast('No se pudo aplicar el ajuste');return;}
+  const local=document.createElement('canvas');local.width=width;local.height=height;
+  const localContext=local.getContext('2d');
+  if(!localContext){showToast('No se pudo preparar la imagen ajustada');return;}
+  const lassoAtStart=lassoPoints.map(point=>({...point}));
+  const activeAtStart=activeLassoId;
   const previousOpacity=item.opacity;item.opacity=1;
-  try { paintItem(item,fullContext); } catch(error) { item.opacity=previousOpacity; console.error('No se pudo procesar el ajuste local:',error);showToast('No se pudo aplicar el ajuste');return; }
-  item.opacity=previousOpacity;
-  const cropped=document.createElement('canvas');cropped.width=width;cropped.height=height;
-  const cropContext=cropped.getContext('2d');
-  if(!cropContext){showToast('No se pudo preparar la imagen ajustada');return;}
-  cropContext.drawImage(full,item.x,item.y,item.width,item.height,0,0,width,height);
+  try { localContext.translate(-item.x,-item.y);paintItem(item,localContext); }
+  catch(error) { console.error('No se pudo procesar el ajuste local:',error);showToast('No se pudo aplicar el ajuste');return; }
+  finally { item.opacity=previousOpacity; }
   let dataUrl:string;
-  try { dataUrl=cropped.toDataURL('image/png'); } catch(error) { console.error('No se pudo exportar el ajuste:',error);showToast('No se pudo guardar el resultado del ajuste');return; }
+  try { dataUrl=local.toDataURL('image/png'); }
+  catch(error) { console.error('No se pudo exportar el ajuste:',error);showToast('No se pudo guardar el resultado del ajuste');return; }
   const baked=new Image();
   baked.onload=()=>{
+    const currentLassoMatches=activeLassoId===activeAtStart&&lassoPoints.length===lassoAtStart.length&&lassoPoints.every((point,index)=>point.x===lassoAtStart[index]!.x&&point.y===lassoAtStart[index]!.y);
+    if(!items.includes(item)||selectedId!==item.id||!currentLassoMatches){showToast('El ajuste no se aplicó porque cambió la capa o la selección; vuelve a aplicarlo');return;}
     item.image=baked;
     item.filter='none';
     item.exposure=0;item.contrastAmount=0;item.saturationAmount=0;item.warmth=0;
@@ -267,12 +270,13 @@ function commitPhotoAdjustments(item:ImageItem,message:string): void {
     item.vibrance=0;item.tint=0;item.vignette=0;item.grain=0;
     item.hslMix={};
     item.maskPoints=undefined;
-    document.querySelector<HTMLSelectElement>('#image-filter')!.value='none';
+    const filter=document.querySelector<HTMLSelectElement>('#image-filter');if(filter)filter.value='none';
     document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input=>{input.value='0';const output=input.closest('label')?.querySelector('output');if(output)output.textContent='0';});
     document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input=>{input.value='0';const output=document.querySelector<HTMLOutputElement>('#hsl-'+input.dataset.hslColor+'-'+input.dataset.hslAxis);if(output)output.value='0';});
     snapshot();
     hideAppliedLasso(message);
     renderLayerProperties();
+    redraw();
   };
   baked.onerror=()=>{showToast('No se pudo finalizar el ajuste; tus controles se conservaron');};
   baked.src=dataUrl;
