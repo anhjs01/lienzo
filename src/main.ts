@@ -241,6 +241,7 @@ function redraw(): void {
 }
 function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
 function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
+function hideAppliedLasso(message:string): void { lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function renderLassoLayers(): void {
  const panel=document.querySelector<HTMLDivElement>('#lasso-layer-panel');const list=document.querySelector<HTMLDivElement>('#lasso-layer-list');const actions=document.querySelector<HTMLDivElement>('#lasso-actions');
@@ -490,7 +491,7 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
 });
 document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
   input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+hue+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} redraw(); });
-  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p}));snapshot();clearLassoSelections('Mezcla HSL aplicada; contorno quitado');}});
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p}));snapshot();hideAppliedLasso('Mezcla HSL aplicada; contorno oculto');}});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
   input.addEventListener('input', () => {
@@ -500,13 +501,13 @@ document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input
     item[key] = Number(input.value);
     redraw();
   });
-  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); clearLassoSelections('Ajuste aplicado; contorno quitado'); } });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); hideAppliedLasso('Ajuste aplicado; contorno oculto'); } });
 });
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
   item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
-  if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); clearLassoSelections('Filtro aplicado; contorno quitado');
+  if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); hideAppliedLasso('Filtro aplicado; contorno oculto');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
