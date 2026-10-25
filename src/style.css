@@ -115,3 +115,22 @@
 .photo-panel .photo-adjustments{margin-top:0;padding-top:0;border-top:0}
 .photo-panel .photo-section-title{scroll-margin-top:86px}
 @media(max-width:820px){.photo-panel{left:70px;width:280px;max-width:calc(100vw - 86px);padding-left:13px;padding-right:13px}.photo-panel-heading{margin-left:-13px;margin-right:-13px;padding-left:13px;padding-right:13px}}
+
+
+/* Refined tool rail and tactile sliders. */
+.tool-rail{background:linear-gradient(180deg,#17181c 0%,#151619 100%);border-right:1px solid #292a31}
+.rail-group{gap:6px}
+.tool-button,.photo-tool-button{position:relative;isolation:isolate}
+.tool-button.active::before,.photo-tool-button.active::before{content:"";position:absolute;left:-1px;top:15%;bottom:15%;width:3px;border-radius:0 4px 4px 0;background:#a995ff;box-shadow:0 0 12px #9b83ff55}
+.tool-button.active{background:linear-gradient(135deg,#302a47,#24212f);border-color:#51446e;color:#d0c4ff;box-shadow:inset 0 1px #ffffff0b,0 5px 14px #0002}
+.tool-button .tool-glyph{transition:transform .18s ease,color .18s ease}
+.tool-button:hover .tool-glyph,.photo-tool-button:hover>span{transform:translateY(-1px)}
+.photo-tool-button.active{background:linear-gradient(135deg,#302a47,#24212f);box-shadow:inset 0 1px #ffffff0b}
+#brush-size,.opacity-slider{appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer;touch-action:pan-y}
+#brush-size::-webkit-slider-runnable-track,.opacity-slider::-webkit-slider-runnable-track{height:5px;border-radius:99px;background:linear-gradient(90deg,#5c4d91,#a995ff 55%,#34333d)}
+#brush-size::-moz-range-track,.opacity-slider::-moz-range-track{height:5px;border-radius:99px;background:linear-gradient(90deg,#5c4d91,#a995ff 55%,#34333d)}
+#brush-size::-webkit-slider-thumb,.opacity-slider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:14px;height:14px;border-radius:50%;margin-top:-4.5px;background:#f7f4ff;border:2px solid #9d87ff;box-shadow:0 1px 7px #0009,0 0 0 3px #9d87ff18;transition:transform .15s ease}
+#brush-size::-moz-range-thumb,.opacity-slider::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#f7f4ff;border:2px solid #9d87ff;box-shadow:0 1px 7px #0009}
+#brush-size:hover::-webkit-slider-thumb,.opacity-slider:hover::-webkit-slider-thumb{transform:scale(1.12)}
+.lasso-actions #lasso-hide-top{border-color:#51446e;background:#2a2636;color:#d9d0ff}
+.lasso-actions #lasso-hide-top:hover{border-color:#a995ff;background:#39304e}
