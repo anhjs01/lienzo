@@ -349,13 +349,21 @@ function commitAreaAdjustmentsToImages(source:ImageItem,message:string,polygon:P
     const localContext=local.getContext('2d');
     if(!localContext)throw new Error('No se pudo preparar una capa para el ajuste');
     const savedSettings={filter:target.filter,exposure:target.exposure,contrastAmount:target.contrastAmount,saturationAmount:target.saturationAmount,warmth:target.warmth,highlights:target.highlights,shadows:target.shadows,whites:target.whites,blacks:target.blacks,vibrance:target.vibrance,tint:target.tint,vignette:target.vignette,grain:target.grain,hslMix:target.hslMix};
-    Object.assign(target,sourceSettings);
+    const savedOpacity=target.opacity;
+    const original=document.createElement('canvas');original.width=width;original.height=height;
+    const originalContext=original.getContext('2d');
+    if(!originalContext)throw new Error('No se pudo conservar el aspecto previo de una capa');
+    if(target===source){target.filter='none';target.exposure=0;target.contrastAmount=0;target.saturationAmount=0;target.warmth=0;target.highlights=0;target.shadows=0;target.whites=0;target.blacks=0;target.vibrance=0;target.tint=0;target.vignette=0;target.grain=0;target.hslMix={};}
+    target.opacity=1;originalContext.translate(-target.x,-target.y);
+    try { paintItem(target,originalContext); }
+    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity; }
+    Object.assign(target,sourceSettings);target.opacity=1;
     try { localContext.translate(-target.x,-target.y);paintItem(target,localContext); }
-    finally { Object.assign(target,savedSettings); }
+    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity; }
     const composite=document.createElement('canvas');composite.width=width;composite.height=height;
     const compositeContext=composite.getContext('2d');
     if(!compositeContext)throw new Error('No se pudo preparar la máscara de una capa');
-    compositeContext.drawImage(target.image,0,0,width,height);
+    compositeContext.drawImage(original,0,0,width,height);
     compositeContext.save();compositeContext.beginPath();
     compositeContext.moveTo(lassoAtStart[0]!.x-target.x,lassoAtStart[0]!.y-target.y);
     lassoAtStart.slice(1).forEach(point=>compositeContext.lineTo(point.x-target.x,point.y-target.y));
