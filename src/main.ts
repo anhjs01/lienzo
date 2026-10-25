@@ -7,7 +7,7 @@ type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; widt
 type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number; fill: boolean };
 type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: string; size: number };
 type ImageFilter = 'none' | 'grayscale' | 'sepia' | 'contrast' | 'saturate' | 'blur';
-type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter };
+type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter; exposure?: number; contrastAmount?: number; saturationAmount?: number; warmth?: number };
 type Item = Stroke | Shape | TextItem | ImageItem;
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -89,7 +89,7 @@ app.innerHTML = `
               <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
             </div>
             <label id="shape-fill-control" class="shape-fill-control" hidden><input id="shape-fill" type="checkbox" /> Rellenar forma con el color actual</label>
-            <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro de imagen</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">El filtro se conserva al exportar el diseño como PNG.</p></div>
+            <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro de imagen</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">Los ajustes se conservan al guardar y exportar el proyecto.</p><div class="photo-adjustments"><label class="photo-adjustment"><span>Exposición <output id="photo-exposure-value">0</output></span><input data-photo-adjust="exposure" type="range" min="-80" max="80" value="0" /></label><label class="photo-adjustment"><span>Contraste <output id="photo-contrast-value">0</output></span><input data-photo-adjust="contrastAmount" type="range" min="-60" max="80" value="0" /></label><label class="photo-adjustment"><span>Saturación <output id="photo-saturation-value">0</output></span><input data-photo-adjust="saturationAmount" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Temperatura cálida <output id="photo-warmth-value">0</output></span><input data-photo-adjust="warmth" type="range" min="0" max="100" value="0" /></label></div></div>
             <button type="button" id="edit-text" class="edit-text-button" hidden>Editar contenido del texto</button>
           </div>
           <p class="layers-note">Selecciona una capa para moverla, renombrarla, ajustar su opacidad o cambiar su orden.</p>
@@ -156,7 +156,8 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
     const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
-    target.filter = filters[item.filter] ?? 'none';
+    const exposure = item.exposure ?? 0, contrastAmount = item.contrastAmount ?? 0, saturationAmount = item.saturationAmount ?? 0, warmth = item.warmth ?? 0;
+    target.filter = [filters[item.filter] ?? 'none', `brightness(${100 + exposure}%)`, `contrast(${100 + contrastAmount}%)`, `saturate(${100 + saturationAmount}%)`, `sepia(${Math.max(0, warmth) / 100})`].join(' ');
     target.drawImage(item.image, item.x, item.y, item.width, item.height);
     target.filter = 'none';
   }
@@ -262,6 +263,8 @@ function renderLayerProperties(): void {
   if (item.kind === 'image') {
     const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
     if (document.activeElement !== filterInput) filterInput.value = item.filter;
+    const photoValues: Record<string, number> = { exposure: item.exposure ?? 0, contrastAmount: item.contrastAmount ?? 0, saturationAmount: item.saturationAmount ?? 0, warmth: item.warmth ?? 0 };
+    Object.entries(photoValues).forEach(([key, value]) => { const input = controls.querySelector<HTMLInputElement>(`[data-photo-adjust="${key}"]`); const output = controls.querySelector<HTMLOutputElement>(`#photo-${key === 'contrastAmount' ? 'contrast' : key === 'saturationAmount' ? 'saturation' : key === 'warmth' ? 'warmth' : 'exposure'}-value`); if (input && document.activeElement !== input) input.value = String(value); if (output) output.value = `${value > 0 ? '+' : ''}${value}`; });
   }
 }
 function moveItem(item: Item, dx: number, dy: number): void {
@@ -398,6 +401,16 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
   if (!item || item.kind !== 'shape' || item.shape === 'line') return;
   item.fill = (event.currentTarget as HTMLInputElement).checked;
   snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
+});
+document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
+  input.addEventListener('input', () => {
+    const item = items.find(candidate => candidate.id === selectedId);
+    if (!item || item.kind !== 'image') return;
+    const key = input.dataset.photoAdjust as 'exposure' | 'contrastAmount' | 'saturationAmount' | 'warmth';
+    item[key] = Number(input.value);
+    redraw();
+  });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { snapshot(); redraw(); showToast('Ajuste fotográfico aplicado'); } });
 });
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
