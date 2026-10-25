@@ -157,7 +157,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   } else if (item.image.complete) {
     const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
     const exposure = item.exposure ?? 0, contrastAmount = item.contrastAmount ?? 0, saturationAmount = item.saturationAmount ?? 0, warmth = item.warmth ?? 0;
-    target.filter = [filters[item.filter] ?? 'none', `brightness(${100 + exposure}%)`, `contrast(${100 + contrastAmount}%)`, `saturate(${100 + saturationAmount}%)`, `sepia(${Math.max(0, warmth) / 100})`].join(' ');
+    target.filter = [(filters[item.filter] && item.filter !== 'none') ? filters[item.filter] : '', `brightness(${100 + exposure}%)`, `contrast(${100 + contrastAmount}%)`, `saturate(${100 + saturationAmount}%)`, `sepia(${Math.max(0, warmth) / 100})`].filter(Boolean).join(' ');
     target.drawImage(item.image, item.x, item.y, item.width, item.height);
     target.filter = 'none';
   }
