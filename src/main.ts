@@ -56,7 +56,7 @@ app.innerHTML = `
       <aside class="tool-rail" aria-label="Herramientas">
         <div class="rail-group">
           <button class="tool-button active" data-tool="select" title="Seleccionar (V)" aria-label="Seleccionar"><span class="tool-glyph">↖</span><small>Elegir</small></button>
-          <button class="tool-button" data-tool="lasso" title="Lazo de área: conserva una selección libre" aria-label="Lazo de área"><span class="tool-glyph">⌁</span><small>Área</small></button>\n          <button class="tool-button" data-tool="object-lasso" title="Lazo de objetos: selecciona una capa dentro del recorrido" aria-label="Lazo de objetos"><span class="tool-glyph">⌘</span><small>Objeto</small></button>
+          <button class="tool-button" data-tool="lasso" title="Lazo de área (G): conserva una selección libre" aria-label="Lazo de área"><span class="tool-glyph">⌁</span><small>Área</small></button>\n          <button class="tool-button" data-tool="object-lasso" title="Lazo de objetos (Mayús+G): selecciona una capa dentro del recorrido" aria-label="Lazo de objetos"><span class="tool-glyph">⌘</span><small>Objeto</small></button>
           <button class="tool-button" data-tool="pen" title="Pincel (B)" aria-label="Pincel"><span class="tool-glyph">✎</span><small>Pincel</small></button>
           <button class="tool-button" data-tool="eraser" title="Borrador (E)" aria-label="Borrador"><span class="tool-glyph">⌫</span><small>Borrar</small></button>
           <span class="rail-rule"></span>
