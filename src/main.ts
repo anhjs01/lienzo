@@ -240,7 +240,7 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.globalCompositeOperation = 'source-over';
     target.strokeStyle = item.erase ? '#ffffff' : item.color; target.fillStyle = item.erase ? '#ffffff' : item.color; target.lineWidth = item.width; target.lineCap = 'round'; target.lineJoin = 'round';
     if (item.points.length === 1) { target.beginPath(); target.arc(item.points[0]!.x, item.points[0]!.y, item.width / 2, 0, Math.PI * 2); target.fill(); }
-    else { target.beginPath(); target.moveTo(item.points[0]!.x, item.points[0]!.y); if (item.points.length === 2) target.lineTo(item.points[1]!.x, item.points[1]!.y); else { for (let i = 1; i < item.points.length - 1; i++) { const current = item.points[i]!; const following = item.points[i + 1]!; target.quadraticCurveTo(current.x, current.y, (current.x + following.x) / 2, (current.y + following.y) / 2); } const last = item.points[item.points.length - 1]!; target.lineTo(last.x, last.y); } target.stroke(); }
+    else { target.beginPath(); target.moveTo(item.points[0]!.x, item.points[0]!.y); if (item.points.length === 2) target.lineTo(item.points[1]!.x, item.points[1]!.y); else { for (let i = 0; i < item.points.length - 1; i++) { const p0 = item.points[Math.max(0, i - 1)]!; const p1 = item.points[i]!; const p2 = item.points[i + 1]!; const p3 = item.points[Math.min(item.points.length - 1, i + 2)]!; target.bezierCurveTo(p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6, p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6, p2.x, p2.y); } } target.stroke(); }
   } else if (item.kind === 'shape') {
     target.strokeStyle = item.color; target.lineWidth = item.width; target.lineCap = 'round';
     const w = item.to.x - item.from.x, h = item.to.y - item.from.y;
@@ -643,14 +643,14 @@ canvas.addEventListener('pointermove', event => {
     for (const sample of events) {
       const point = pointFromEvent(sample, rect);
       const last = activeStroke.points[activeStroke.points.length - 1];
-      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.65) activeStroke.points.push(point);
+      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.35) activeStroke.points.push(point);
     }
     scheduleLivePreview();
   } else if (shapeStart && previewShape) { previewShape.to = p; scheduleLivePreview(); }
 });
 function finishPointer(event?: PointerEvent): void {
   if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) { lassoPoints=[]; selectedId=null; redraw(); showToast('Recorrido demasiado corto; dibuja un lazo más amplio'); } else if (tool === 'object-lasso') { const polygon=lassoPoints.map(point=>({...point})); const foundItems=items.filter(item=>item.visible&&lassoIntersectsBounds(polygon,bounds(item)));const found=foundItems[foundItems.length-1]??null;objectLassoSelectedIds=new Set(foundItems.map(item=>item.id));selectedId=found?.id??null;lassoPoints=[];activeLassoId=null;lassoDrawing=false;redraw();showToast(foundItems.length>1?foundItems.length+' objetos seleccionados; puedes moverlos juntos o eliminarlos':found?'Objeto seleccionado: '+layerName(found):'No se encontró ningún objeto dentro del lazo'); } else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); redraw(); showToast('Lazo de área creado. Puedes moverlo o copiarlo desde sus controles.'); } }
-  if (event && activeStroke) { const finalPoint = pointFromEvent(event); const last = activeStroke.points[activeStroke.points.length - 1]; if (!last || Math.hypot(finalPoint.x-last.x,finalPoint.y-last.y)>0.05) activeStroke.points.push(finalPoint); }
+  if (event?.type === 'pointerup' && activeStroke) { const rect = canvas.getBoundingClientRect(); const samples = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event]; for (const sample of samples) { const finalPoint = pointFromEvent(sample, rect); const last = activeStroke.points[activeStroke.points.length - 1]; if (!last || Math.hypot(finalPoint.x-last.x,finalPoint.y-last.y)>0.05) activeStroke.points.push(finalPoint); } }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; livePreviewBase = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; livePreviewBase = null; commitItem(finished); }
   if (livePreviewFrame) { cancelAnimationFrame(livePreviewFrame); livePreviewFrame = 0; }
