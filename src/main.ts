@@ -190,22 +190,27 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
   const scale = photoPreviewScale;
   const width=Math.max(1,Math.round(item.width*scale)),height=Math.max(1,Math.round(item.height*scale));
   const activeMask=lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]);
-  const firstMaskPoint=activeMask[0],lastMaskPoint=activeMask[activeMask.length-1];
-  const maskKey=activeMask.length?[activeLassoId,activeMask.length,Math.round(firstMaskPoint!.x*10)/10,Math.round(firstMaskPoint!.y*10)/10,Math.round(lastMaskPoint!.x*10)/10,Math.round(lastMaskPoint!.y*10)/10]:[];
-  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,maskKey]);
+  const maskKey:string[]=[];
+  for(const point of activeMask)maskKey.push(Math.round(point.x*10)/10+','+Math.round(point.y*10)/10);
+  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,activeLassoId,maskKey]);
   const cached=processedImageCache.get(item);
   if(cached&&cached.image===item.image&&cached.key===key)return cached.canvas;
   const off=document.createElement('canvas');off.width=width;off.height=height;
   const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);
   const imageData=oc.getImageData(0,0,off.width,off.height),data=imageData.data;
+  let maskPixels:Uint8ClampedArray|null=null;
+  if(activeMask.length>=3){
+    const maskCanvas=document.createElement('canvas');maskCanvas.width=off.width;maskCanvas.height=off.height;
+    const maskCtx=maskCanvas.getContext('2d');
+    if(maskCtx){maskCtx.scale(off.width/Math.max(1,item.width),off.height/Math.max(1,item.height));maskCtx.translate(-item.x,-item.y);maskCtx.beginPath();maskCtx.moveTo(activeMask[0]!.x,activeMask[0]!.y);for(let i=1;i<activeMask.length;i++)maskCtx.lineTo(activeMask[i]!.x,activeMask[i]!.y);maskCtx.closePath();maskCtx.fillStyle='#fff';maskCtx.fill();maskPixels=maskCtx.getImageData(0,0,off.width,off.height).data;}
+  }
   const exposure=Math.pow(2,(item.exposure??0)/40),contrast=1+(item.contrastAmount??0)/100,saturation=1+(item.saturationAmount??0)/100,warmth=(item.warmth??0)/100,tint=(item.tint??0)/100,vibrance=(item.vibrance??0)/100;
   const highlights=(item.highlights??0)/100,shadows=(item.shadows??0)/100,whites=(item.whites??0)/100,blacks=(item.blacks??0)/100;
   const cs:{key:HslColor;center:number;range:number}[]=[{key:'red',center:0,range:25},{key:'orange',center:30,range:22},{key:'yellow',center:60,range:25},{key:'green',center:120,range:38},{key:'aqua',center:180,range:28},{key:'blue',center:220,range:35},{key:'purple',center:270,range:28},{key:'magenta',center:320,range:25}];
   for(let i=0;i<data.length;i+=4){
     if(data[i+3]===0)continue;
     const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);
-    const selected=pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height,lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]));
-    if(!selected)continue;
+    if(maskPixels&&maskPixels[pixel*4+3]===0)continue;
     let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
     r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
     r=Math.max(0,Math.min(1,r));g=Math.max(0,Math.min(1,g));b=Math.max(0,Math.min(1,b));
