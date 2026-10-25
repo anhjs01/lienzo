@@ -1,18 +1,21 @@
 import './style.css';
 
-type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
+type Tool = 'select' | 'lasso' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
 type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
 type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
 type Shape = LayerMeta & { kind: 'shape'; shape: 'line' | 'rect' | 'ellipse'; from: Point; to: Point; color: string; width: number; fill: boolean };
 type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: string; size: number };
 type ImageFilter = 'none' | 'grayscale' | 'sepia' | 'contrast' | 'saturate' | 'blur';
-type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter };
+type HslMix = { h: number; s: number; l: number };
+type HslColor = 'red' | 'orange' | 'yellow' | 'green' | 'aqua' | 'blue' | 'purple' | 'magenta';
+type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter; exposure?: number; contrastAmount?: number; saturationAmount?: number; warmth?: number; highlights?: number; shadows?: number; whites?: number; blacks?: number; vibrance?: number; tint?: number; vignette?: number; grain?: number; maskPoints?: Point[]; hslMix?: Partial<Record<HslColor, HslMix>> };
 type Item = Stroke | Shape | TextItem | ImageItem;
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('No se encontró el contenedor de Lienzo.');
 
+const hslColors: { key: HslColor; label: string }[] = [{key:'red',label:'Rojo'},{key:'orange',label:'Naranja'},{key:'yellow',label:'Amarillo'},{key:'green',label:'Verde'},{key:'aqua',label:'Aqua'},{key:'blue',label:'Azul'},{key:'purple',label:'Púrpura'},{key:'magenta',label:'Magenta'}];
 app.innerHTML = `
   <div class="app-shell">
     <header class="topbar">
@@ -33,6 +36,7 @@ app.innerHTML = `
       <aside class="tool-rail" aria-label="Herramientas">
         <div class="rail-group">
           <button class="tool-button active" data-tool="select" title="Seleccionar (V)" aria-label="Seleccionar"><span class="tool-glyph">↖</span><small>Elegir</small></button>
+          <button class="tool-button" data-tool="lasso" title="Lazo: dibuja un área de selección" aria-label="Lazo"><span class="tool-glyph">⌁</span><small>Lazo</small></button>
           <button class="tool-button" data-tool="pen" title="Pincel (B)" aria-label="Pincel"><span class="tool-glyph">✎</span><small>Pincel</small></button>
           <button class="tool-button" data-tool="eraser" title="Borrador (E)" aria-label="Borrador"><span class="tool-glyph">⌫</span><small>Borrar</small></button>
           <span class="rail-rule"></span>
@@ -46,7 +50,7 @@ app.innerHTML = `
       <section class="editor-area">
         <div class="editor-toolbar">
           <div class="toolbar-context"><span class="context-kicker">TU ESPACIO CREATIVO</span><strong id="tool-label">Seleccionar</strong></div>
-          <div class="toolbar-options">
+          <div class="toolbar-options"><div class="lasso-actions" id="lasso-actions" hidden><button type="button" id="lasso-move-top" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-copy-top">Copiar lazo</button><button type="button" id="lasso-hide-top" title="Ocultar contorno">Ocultar</button></div>
             <label class="color-control" title="Color"><input id="color" type="color" value="#8067f2" aria-label="Color de herramienta" /><span id="color-value">#8067F2</span></label>
             <span class="option-divider"></span>
             <label class="size-control" for="brush-size"><span>Grosor</span><input id="brush-size" type="range" min="1" max="40" value="5" /><output id="size-value">5 px</output></label>
@@ -76,6 +80,8 @@ app.innerHTML = `
           <div class="section-heading"><span>Capas</span><span class="layer-count" id="layer-count">01</span></div>
           <div class="layer-row selected"><span class="layer-thumb">▧</span><span class="layer-name">Fondo del lienzo</span><span class="layer-eye">◉</span></div>
           <div id="layers-list"></div>
+          <div id="photo-sidebar-nav" class="photo-quick-nav photo-sidebar-nav" aria-label="Herramientas de edición fotográfica" hidden><button type="button" data-photo-jump="LUZ">☼ Luz</button><button type="button" data-photo-jump="COLOR">◉ Color</button><button type="button" data-photo-jump="MEZCLA DE COLORES">◌ Mezclador</button><button type="button" data-photo-jump="EFECTOS">✧ Efectos</button></div>
+          <div id="lasso-layer-panel" class="lasso-layer-panel" hidden><div class="lasso-panel-heading"><span>Selecciones de lazo</span><button type="button" id="lasso-clear" title="Quitar selección activa">Quitar</button></div><p class="lasso-panel-note">Cada lazo es una selección independiente. Activa uno para moverlo o crear una copia sin mover la imagen.</p><div id="lasso-layer-list"></div><div class="lasso-layer-actions"><button type="button" id="lasso-move" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-duplicate">＋ Copiar lazo</button></div></div>
           <div id="layer-properties" class="layer-properties" hidden>
             <label class="field-label" for="layer-name-input">Nombre de capa</label>
             <input class="text-field" id="layer-name-input" maxlength="60" value="" />
@@ -88,7 +94,7 @@ app.innerHTML = `
               <button type="button" id="layer-delete" title="Eliminar capa">Eliminar</button>
             </div>
             <label id="shape-fill-control" class="shape-fill-control" hidden><input id="shape-fill" type="checkbox" /> Rellenar forma con el color actual</label>
-            <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro de imagen</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">El filtro se conserva al exportar el diseño como PNG.</p></div>
+            <div id="image-filter-control" class="image-filter-control" hidden><label class="field-label" for="image-filter">Filtro preestablecido</label><select id="image-filter" class="text-field"><option value="none">Original</option><option value="grayscale">Blanco y negro</option><option value="sepia">Sepia</option><option value="contrast">Contraste</option><option value="saturate">Color intenso</option><option value="blur">Desenfoque suave</option></select><p class="filter-note">Los ajustes se conservan al guardar y exportar el proyecto.</p><div class="photo-adjustments"><p class="photo-section-title">LUZ</p><label class="photo-adjustment"><span>Altas luces <output id="photo-highlights-value">0</output></span><input data-photo-adjust="highlights" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Sombras <output id="photo-shadows-value">0</output></span><input data-photo-adjust="shadows" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Blancos <output id="photo-whites-value">0</output></span><input data-photo-adjust="whites" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Negros <output id="photo-blacks-value">0</output></span><input data-photo-adjust="blacks" type="range" min="-100" max="100" value="0" /></label><p class="photo-section-title">COLOR</p><label class="photo-adjustment"><span>Intensidad <output id="photo-vibrance-value">0</output></span><input data-photo-adjust="vibrance" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Tinte verde / magenta <output id="photo-tint-value">0</output></span><input data-photo-adjust="tint" type="range" min="-100" max="100" value="0" /></label><p class="photo-section-title">MEZCLA DE COLORES · HSL</p><div id="hsl-mix-controls">__HSL_CONTROLS__</div><p class="photo-section-title">EFECTOS</p><label class="photo-adjustment"><span>Viñeta <output id="photo-vignette-value">0</output></span><input data-photo-adjust="vignette" type="range" min="0" max="100" value="0" /></label><label class="photo-adjustment"><span>Grano <output id="photo-grain-value">0</output></span><input data-photo-adjust="grain" type="range" min="0" max="100" value="0" /></label><label class="photo-adjustment"><span>Exposición <output id="photo-exposure-value">0</output></span><input data-photo-adjust="exposure" type="range" min="-80" max="80" value="0" /></label><label class="photo-adjustment"><span>Contraste <output id="photo-contrast-value">0</output></span><input data-photo-adjust="contrastAmount" type="range" min="-60" max="80" value="0" /></label><label class="photo-adjustment"><span>Saturación <output id="photo-saturation-value">0</output></span><input data-photo-adjust="saturationAmount" type="range" min="-100" max="100" value="0" /></label><label class="photo-adjustment"><span>Temperatura cálida <output id="photo-warmth-value">0</output></span><input data-photo-adjust="warmth" type="range" min="0" max="100" value="0" /></label></div></div>
             <button type="button" id="edit-text" class="edit-text-button" hidden>Editar contenido del texto</button>
           </div>
           <p class="layers-note">Selecciona una capa para moverla, renombrarla, ajustar su opacidad o cambiar su orden.</p>
@@ -101,7 +107,10 @@ app.innerHTML = `
     <div class="mobile-bottom"><button data-tool="select" class="mobile-tool active">↖<span>Elegir</span></button><button data-tool="pen" class="mobile-tool">✎<span>Pincel</span></button><button data-tool="eraser" class="mobile-tool">⌫<span>Borrar</span></button><button data-tool="text" class="mobile-tool">T<span>Texto</span></button><button id="mobile-more" class="mobile-tool">•••<span>Más</span></button></div>
   </div>
 `;
+const hslHost = document.querySelector<HTMLDivElement>('#hsl-mix-controls');
+if (hslHost) hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color" data-hsl-family="' + color.key + '"><summary><span data-hsl-preview="' + color.key + '" class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join('');
 
+document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.photoJump??'';const target=Array.from(document.querySelectorAll<HTMLElement>('.photo-section-title')).find(el=>el.textContent?.includes(key));if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('photo-section-focus');window.setTimeout(()=>target.classList.remove('photo-section-focus'),900);}document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(b=>b.classList.toggle('active',b===button));}));
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 const ctx = canvas.getContext('2d')!;
 const hint = document.querySelector<HTMLDivElement>('#paper-hint')!;
@@ -111,6 +120,15 @@ const sizeValue = document.querySelector<HTMLOutputElement>('#size-value')!;
 const colorValue = document.querySelector<HTMLSpanElement>('#color-value')!;
 const toast = document.querySelector<HTMLDivElement>('#toast')!;
 const fileInput = document.querySelector<HTMLInputElement>('#file-input')!;
+let lassoPoints: Point[] = [];
+let lassoSelections: { id: string; name: string; points: Point[] }[] = [];
+let activeLassoId: string | null = null;
+let hiddenLassoIds = new Set<string>();
+let lassoMoveMode = false;
+let lassoDragOrigin: Point[] | null = null;
+let lassoDrawing = false;
+let photoCommitVersion = 0;
+let projectRestoreVersion = 0;
 let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
@@ -120,10 +138,8 @@ let dragStart: Point | null = null;
 let dragOrigin: Item | null = null;
 let hasMoved = false;
 let resizing = false;
-type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
-let resizeHandle: ResizeHandle | null = null;
 function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
-function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
+function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'image' && item.maskPoints ? { maskPoints: item.maskPoints.map(p => ({ ...p })) } : {}), ...(item.kind === 'image' && item.hslMix ? { hslMix: Object.fromEntries(Object.entries(item.hslMix).map(([k,v]) => [k, v ? { ...v } : v])) as ImageItem['hslMix'] } : {}), ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
 let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
@@ -132,6 +148,41 @@ let toastTimer = 0;
 function pointFromEvent(event: MouseEvent): Point {
   const rect = canvas.getBoundingClientRect();
   return { x: Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)), y: Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)) };
+}
+function rgbToHsl(r:number,g:number,b:number):[number,number,number]{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min,l=(max+min)/2;let h=0,ss=0;if(d){ss=d/(1-Math.abs(2*l-1));if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return[h,ss,l];}
+function hslToRgb(h:number,ss:number,l:number):[number,number,number]{const c=(1-Math.abs(2*l-1))*ss,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r=0,g=0,b=0;if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}return[Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)];}
+function hueDistance(a:number,b:number):number{const d=Math.abs(a-b)%360;return Math.min(d,360-d);}
+function pointInLasso(x:number,y:number,polygon:Point[]=lassoPoints):boolean{if(polygon.length<3)return true;let inside=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const a=polygon[i]!,b=polygon[j]!;if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))inside=!inside;}return inside;}
+function renderHslImage(item:ImageItem):HTMLCanvasElement{
+  const off=document.createElement('canvas');off.width=Math.max(1,Math.round(item.width));off.height=Math.max(1,Math.round(item.height));
+  const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);
+  const imageData=oc.getImageData(0,0,off.width,off.height),data=imageData.data;
+  const exposure=Math.pow(2,(item.exposure??0)/40),contrast=1+(item.contrastAmount??0)/100,saturation=1+(item.saturationAmount??0)/100,warmth=(item.warmth??0)/100,tint=(item.tint??0)/100,vibrance=(item.vibrance??0)/100;
+  const highlights=(item.highlights??0)/100,shadows=(item.shadows??0)/100,whites=(item.whites??0)/100,blacks=(item.blacks??0)/100;
+  const cs:{key:HslColor;center:number;range:number}[]=[{key:'red',center:0,range:25},{key:'orange',center:30,range:22},{key:'yellow',center:60,range:25},{key:'green',center:120,range:38},{key:'aqua',center:180,range:28},{key:'blue',center:220,range:35},{key:'purple',center:270,range:28},{key:'magenta',center:320,range:25}];
+  for(let i=0;i<data.length;i+=4){
+    if(data[i+3]===0)continue;
+    const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);
+    const selected=pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height,lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]));
+    if(!selected)continue;
+    let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
+    r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
+    r=Math.max(0,Math.min(1,r));g=Math.max(0,Math.min(1,g));b=Math.max(0,Math.min(1,b));
+    let [h,ss,l]=rgbToHsl(r*255,g*255,b*255);
+    const shadowWeight=Math.pow(1-l,2),highlightWeight=Math.pow(l,2),whiteWeight=Math.max(0,(l-.65)/.35),blackWeight=Math.max(0,(.35-l)/.35);
+    l+=shadows*shadowWeight*.45+highlights*highlightWeight*.38+whites*whiteWeight*.32-blacks*blackWeight*.32;
+    l=Math.max(0,Math.min(1,(l-.5)*contrast+.5));
+    ss=Math.max(0,Math.min(1,ss*(saturation+vibrance*(1-ss))));
+    let dh=0,ds=0,dl=0;
+    for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const w=Math.max(0,1-hueDistance(h,c.center)/c.range);dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}
+    let rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));
+    if(item.filter==='grayscale'){const y=.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];rgb=[y,y,y];}
+    else if(item.filter==='sepia'){const [rr,gg,bb]=rgb;rgb=[Math.min(255,rr*.393+gg*.769+bb*.189),Math.min(255,rr*.349+gg*.686+bb*.168),Math.min(255,rr*.272+gg*.534+bb*.131)];}
+    else if(item.filter==='contrast'){rgb=rgb.map(v=>Math.max(0,Math.min(255,(v-128)*1.25+128))) as [number,number,number];}
+    else if(item.filter==='saturate'){const [hh,sss,ll]=rgbToHsl(rgb[0],rgb[1],rgb[2]);rgb=hslToRgb(hh,Math.min(1,sss*1.6),ll);}
+    data[i]=rgb[0];data[i+1]=rgb[1];data[i+2]=rgb[2];
+  }
+  oc.putImageData(imageData,0,0);return off;
 }
 function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   if (!item.visible) return;
@@ -154,9 +205,23 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
-    const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
-    target.filter = filters[item.filter] ?? 'none';
-    target.drawImage(item.image, item.x, item.y, item.width, item.height);
+    const hasAdjustments = (item.filter !== 'none' && item.filter !== 'blur') || [item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint].some(v => typeof v === 'number' && v !== 0) || (!!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0)));
+    const processed = hasAdjustments ? renderHslImage(item) : item.image;
+    const localMask = lassoPoints.length >= 3 ? lassoPoints : item.maskPoints;
+    target.filter = 'none';
+    if (item.filter === 'blur' && localMask && localMask.length >= 3) {
+      target.drawImage(processed, item.x, item.y, item.width, item.height);
+      target.save(); target.beginPath(); target.moveTo(localMask[0]!.x,localMask[0]!.y); localMask.slice(1).forEach(point=>target.lineTo(point.x,point.y)); target.closePath(); target.clip(); target.filter='blur(2px)'; target.drawImage(processed,item.x,item.y,item.width,item.height); target.restore(); target.filter='none';
+    } else {
+      target.filter = item.filter === 'blur' ? 'blur(2px)' : 'none';
+      target.drawImage(processed, item.x, item.y, item.width, item.height);
+      target.filter = 'none';
+    }
+    target.save();
+    if(localMask&&localMask.length>=3){target.beginPath();target.moveTo(localMask[0]!.x,localMask[0]!.y);localMask.slice(1).forEach(point=>target.lineTo(point.x,point.y));target.closePath();target.clip();}
+    if ((item.vignette ?? 0) > 0) { const amount = (item.vignette ?? 0) / 100; const gradient = target.createRadialGradient(item.x + item.width / 2, item.y + item.height / 2, Math.min(item.width, item.height) * 0.12, item.x + item.width / 2, item.y + item.height / 2, Math.max(item.width, item.height) * 0.72); gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(1, `rgba(0,0,0,${amount * 0.72})`); target.save(); target.fillStyle = gradient; target.fillRect(item.x, item.y, item.width, item.height); target.restore(); }
+    if ((item.grain ?? 0) > 0) { const amount = (item.grain ?? 0) / 100; const step = Math.max(3, Math.round(7 - amount * 4)); target.save(); target.globalAlpha *= amount * 0.22; for (let y = item.y; y < item.y + item.height; y += step) for (let x = item.x; x < item.x + item.width; x += step) { const noise = ((Math.imul(Math.floor(x) + 1, 374761393) ^ Math.imul(Math.floor(y) + 1, 668265263)) >>> 0) % 2 ? 255 : 0; target.fillStyle = `rgb(${noise},${noise},${noise})`; target.fillRect(x, y, step * 0.45, step * 0.45); } target.restore(); }
+    target.restore();
     target.filter = 'none';
   }
   target.restore();
@@ -167,11 +232,63 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
+  const allLassos = (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id));
+  allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
+  if(lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
+  renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
   if (selected) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   renderLayers();
   renderLayerProperties();
+}
+function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
+function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
+function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
+function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
+function commitPhotoAdjustments(item:ImageItem,message:string): void {
+  if(!item.visible){showToast('Activa la capa de imagen antes de aplicar ajustes');return;}
+  const commitVersion=++photoCommitVersion;
+  const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
+  const local=document.createElement('canvas');local.width=width;local.height=height;
+  const localContext=local.getContext('2d');
+  if(!localContext){showToast('No se pudo preparar la imagen ajustada');return;}
+  const lassoAtStart=lassoPoints.map(point=>({...point}));
+  const activeAtStart=activeLassoId;
+  const previousOpacity=item.opacity;item.opacity=1;
+  try { localContext.translate(-item.x,-item.y);paintItem(item,localContext); }
+  catch(error) { console.error('No se pudo procesar el ajuste local:',error);showToast('No se pudo aplicar el ajuste');return; }
+  finally { item.opacity=previousOpacity; }
+  let dataUrl:string;
+  try { dataUrl=local.toDataURL('image/png'); }
+  catch(error) { console.error('No se pudo exportar el ajuste:',error);showToast('No se pudo guardar el resultado del ajuste');return; }
+  const baked=new Image();
+  baked.onload=()=>{
+    const currentLassoMatches=activeLassoId===activeAtStart&&lassoPoints.length===lassoAtStart.length&&lassoPoints.every((point,index)=>point.x===lassoAtStart[index]!.x&&point.y===lassoAtStart[index]!.y);
+    if(commitVersion!==photoCommitVersion||!items.includes(item)||selectedId!==item.id||!currentLassoMatches){showToast('El ajuste no se aplicó porque cambió la capa o la selección; vuelve a aplicarlo');return;}
+    item.image=baked;
+    item.filter='none';
+    item.exposure=0;item.contrastAmount=0;item.saturationAmount=0;item.warmth=0;
+    item.highlights=0;item.shadows=0;item.whites=0;item.blacks=0;
+    item.vibrance=0;item.tint=0;item.vignette=0;item.grain=0;
+    item.hslMix={};
+    item.maskPoints=undefined;
+    const filter=document.querySelector<HTMLSelectElement>('#image-filter');if(filter)filter.value='none';
+    document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input=>{input.value='0';const output=input.closest('label')?.querySelector('output');if(output)output.textContent='0';});
+    document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input=>{input.value='0';const output=document.querySelector<HTMLOutputElement>('#hsl-'+input.dataset.hslColor+'-'+input.dataset.hslAxis);if(output)output.value='0';});
+    snapshot();
+    hideAppliedLasso(message);
+    renderLayerProperties();
+    redraw();
+  };
+  baked.onerror=()=>{showToast('No se pudo finalizar el ajuste; tus controles se conservaron');};
+  baked.src=dataUrl;
+}
+function renderLassoLayers(): void {
+ const panel=document.querySelector<HTMLDivElement>('#lasso-layer-panel');const list=document.querySelector<HTMLDivElement>('#lasso-layer-list');const actions=document.querySelector<HTMLDivElement>('#lasso-actions');
+ if(panel)panel.hidden=lassoSelections.length===0;if(actions)actions.hidden=lassoSelections.length===0;if(!list)return;list.innerHTML='';
+ lassoSelections.slice().reverse().forEach(selection=>{const row=document.createElement('button');row.type='button';row.className='lasso-layer-row'+(selection.id===activeLassoId?' selected':'');row.innerHTML='<span class="lasso-layer-icon">⌁</span><span></span>';const label=row.querySelector('span:nth-child(2)');if(label)label.textContent=selection.name;row.title='Seleccionar '+selection.name;row.addEventListener('click',()=>activateLasso(selection.id));list.append(row);});
+ const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed',String(lassoMoveMode));b.classList.toggle('active',lassoMoveMode);}});
 }
 function snapshot(): void {
   history = history.slice(0, historyIndex + 1);
@@ -199,7 +316,7 @@ function showToast(message: string): void {
 function setTool(next: Tool): void {
   tool = next;
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.classList.toggle('active', el.dataset.tool === next));
-  const labels: Record<Tool, string> = { select: 'Seleccionar', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
+  const labels: Record<Tool, string> = { select: 'Seleccionar', lasso: 'Lazo de área', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
   document.querySelector('#tool-label')!.textContent = labels[next];
   canvas.style.cursor = next === 'select' ? 'default' : next === 'text' ? 'text' : 'crosshair';
 }
@@ -240,6 +357,7 @@ function renderLayerProperties(): void {
   const item = items.find(candidate => candidate.id === selectedId);
   const controls = document.querySelector<HTMLDivElement>('#layer-properties'); if (!controls) return;
   controls.hidden = !item;
+  const photoNav=document.querySelector<HTMLDivElement>('#photo-sidebar-nav');if(photoNav)photoNav.hidden=item?.kind!=='image';
   if (!item) return;
   const nameInput = controls.querySelector<HTMLInputElement>('#layer-name-input')!;
   const opacityInput = controls.querySelector<HTMLInputElement>('#layer-opacity')!;
@@ -260,6 +378,9 @@ function renderLayerProperties(): void {
   if (item.kind === 'image') {
     const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
     if (document.activeElement !== filterInput) filterInput.value = item.filter;
+    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+((hueBase[color]+mix.h*1.8+360)%360)+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} });
+    const photoValues: Record<string, number> = { exposure: item.exposure ?? 0, contrastAmount: item.contrastAmount ?? 0, saturationAmount: item.saturationAmount ?? 0, warmth: item.warmth ?? 0, highlights: item.highlights ?? 0, shadows: item.shadows ?? 0, whites: item.whites ?? 0, blacks: item.blacks ?? 0, vibrance: item.vibrance ?? 0, tint: item.tint ?? 0, vignette: item.vignette ?? 0, grain: item.grain ?? 0 };
+    Object.entries(photoValues).forEach(([key, value]) => { const input = controls.querySelector<HTMLInputElement>(`[data-photo-adjust="${key}"]`); const output = controls.querySelector<HTMLOutputElement>(`#photo-${({contrastAmount:'contrast', saturationAmount:'saturation', warmth:'warmth', highlights:'highlights', shadows:'shadows', whites:'whites', blacks:'blacks', vibrance:'vibrance', tint:'tint', vignette:'vignette', grain:'grain'} as Record<string,string>)[key] ?? key}-value`); if (input && document.activeElement !== input) input.value = String(value); if (output) output.value = `${value > 0 ? '+' : ''}${value}`; });
   }
 }
 function moveItem(item: Item, dx: number, dy: number): void {
@@ -268,81 +389,24 @@ function moveItem(item: Item, dx: number, dy: number): void {
   else if (item.kind === 'text') item.at = { x: item.at.x + dx, y: item.at.y + dy };
   else { item.x += dx; item.y += dy; }
 }
-function resizeItemToBounds(item: Item, original: Item, next: { x: number; y: number; w: number; h: number }): void {
+function resizeItem(item: Item, original: Item, sx: number, sy: number): void {
   const b = bounds(original);
-  const sx = next.w / Math.max(1, b.w);
-  const sy = next.h / Math.max(1, b.h);
-  const map = (p: Point): Point => ({ x: next.x + (p.x - b.x) * sx, y: next.y + (p.y - b.y) * sy });
   if (item.kind === 'stroke' && original.kind === 'stroke') {
-    item.points = original.points.map(map);
+    item.points = original.points.map(p => ({ x: b.x + (p.x - b.x) * sx, y: b.y + (p.y - b.y) * sy }));
     item.width = Math.max(1, original.width * Math.min(sx, sy));
   } else if (item.kind === 'shape' && original.kind === 'shape') {
-    item.from = map(original.from);
-    item.to = map(original.to);
+    item.from = { x: b.x + (original.from.x - b.x) * sx, y: b.y + (original.from.y - b.y) * sy };
+    item.to = { x: b.x + (original.to.x - b.x) * sx, y: b.y + (original.to.y - b.y) * sy };
     item.width = Math.max(1, original.width * Math.min(sx, sy));
   } else if (item.kind === 'text' && original.kind === 'text') {
-    item.at = map(original.at);
+    item.at = { x: b.x + (original.at.x - b.x) * sx, y: b.y + (original.at.y - b.y) * sy };
     item.size = Math.max(8, original.size * Math.max(0.1, (sx + sy) / 2));
   } else if (item.kind === 'image' && original.kind === 'image') {
-    item.x = next.x; item.y = next.y;
-    item.width = Math.max(1, next.w); item.height = Math.max(1, next.h);
+    item.x = b.x; item.y = b.y; item.width = Math.max(1, original.width * sx); item.height = Math.max(1, original.height * sy);
   }
-}
-function resizeBoundsFromHandle(original: Item, handle: ResizeHandle, p: Point): { x: number; y: number; w: number; h: number } {
-  const b = bounds(original);
-  const minSize = 12;
-  const left = handle.endsWith('w') ? Math.min(p.x, b.x + b.w - minSize) : b.x;
-  const right = handle.endsWith('e') ? Math.max(p.x, b.x + minSize) : b.x + b.w;
-  const top = handle.startsWith('n') ? Math.min(p.y, b.y + b.h - minSize) : b.y;
-  const bottom = handle.startsWith('s') ? Math.max(p.y, b.y + minSize) : b.y + b.h;
-  return { x: left, y: top, w: Math.max(minSize, right - left), h: Math.max(minSize, bottom - top) };
-}
-function distanceToSegment(p: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (!lengthSquared) return Math.hypot(p.x - a.x, p.y - a.y);
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-}
-function itemContainsPoint(item: Item, p: Point): boolean {
-  const tolerance = 7;
-  const b = bounds(item);
-  if (item.kind === 'image' || item.kind === 'text') {
-    return p.x >= b.x - tolerance && p.x <= b.x + b.w + tolerance &&
-      p.y >= b.y - tolerance && p.y <= b.y + b.h + tolerance;
-  }
-  if (item.kind === 'stroke') {
-    const radius = tolerance + item.width / 2;
-    if (item.points.length === 1) return Math.hypot(p.x - item.points[0]!.x, p.y - item.points[0]!.y) <= radius;
-    for (let i = 1; i < item.points.length; i++) {
-      if (distanceToSegment(p, item.points[i - 1]!, item.points[i]!) <= radius) return true;
-    }
-    return false;
-  }
-  const left = Math.min(item.from.x, item.to.x), right = Math.max(item.from.x, item.to.x);
-  const top = Math.min(item.from.y, item.to.y), bottom = Math.max(item.from.y, item.to.y);
-  const inside = p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
-  if (item.shape === 'line') return distanceToSegment(p, item.from, item.to) <= tolerance + item.width / 2;
-  if (item.shape === 'rect') {
-    if (item.fill && inside) return true;
-    const nearHorizontal = p.x >= left - tolerance && p.x <= right + tolerance &&
-      (Math.abs(p.y - top) <= tolerance + item.width / 2 || Math.abs(p.y - bottom) <= tolerance + item.width / 2);
-    const nearVertical = p.y >= top - tolerance && p.y <= bottom + tolerance &&
-      (Math.abs(p.x - left) <= tolerance + item.width / 2 || Math.abs(p.x - right) <= tolerance + item.width / 2);
-    return nearHorizontal || nearVertical;
-  }
-  const rx = Math.max(1, (right - left) / 2), ry = Math.max(1, (bottom - top) / 2);
-  const nx = (p.x - (left + right) / 2) / rx, ny = (p.y - (top + bottom) / 2) / ry;
-  const normalizedDistance = nx * nx + ny * ny;
-  if (item.fill && inside && normalizedDistance <= 1) return true;
-  const edgeTolerance = tolerance / Math.max(1, Math.min(rx, ry)) + item.width / Math.max(1, Math.min(rx, ry));
-  return Math.abs(normalizedDistance - 1) <= edgeTolerance && p.x >= left - tolerance && p.x <= right + tolerance && p.y >= top - tolerance && p.y <= bottom + tolerance;
 }
 function hitTest(p: Point): Item | null {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i]!;
-    if (item.visible && itemContainsPoint(item, p)) return item;
-  }
+  for (let i = items.length - 1; i >= 0; i--) { const item = items[i]!; if (!item.visible) continue; const b = bounds(item); if (p.x >= b.x-8 && p.x <= b.x+b.w+8 && p.y >= b.y-8 && p.y <= b.y+b.h+8) return item; }
   return null;
 }
 function reorderSelected(direction: -1 | 1): void {
@@ -370,22 +434,17 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
+  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
+  if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) {
       const b = bounds(selected);
-      const handles: { key: ResizeHandle; x: number; y: number }[] = [
-        { key: 'nw', x: b.x - 5, y: b.y - 5 },
-        { key: 'ne', x: b.x + b.w + 5, y: b.y - 5 },
-        { key: 'sw', x: b.x - 5, y: b.y + b.h + 5 },
-        { key: 'se', x: b.x + b.w + 5, y: b.y + b.h + 5 }
-      ];
-      const handle = handles.find(candidate => Math.abs(p.x - candidate.x) <= 9 && Math.abs(p.y - candidate.y) <= 9);
-      if (handle) {
-        dragStart = p; dragOrigin = cloneItem(selected); resizing = true; resizeHandle = handle.key; hasMoved = false; redraw(); return;
+      if (Math.abs(p.x - (b.x + b.w)) <= 12 && Math.abs(p.y - (b.y + b.h)) <= 12) {
+        dragStart = p; dragOrigin = cloneItem(selected); resizing = true; hasMoved = false; redraw(); return;
       }
     }
-    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; resizeHandle = null; hasMoved = false; redraw(); return;
+    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; hasMoved = false; redraw(); return;
   }
   if (tool === 'text') {
     const text = window.prompt('Escribe tu texto:');
@@ -397,42 +456,48 @@ canvas.addEventListener('pointerdown', event => {
 });
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
-  if (tool === 'select' && dragStart && selectedId) {
+  if (tool === 'lasso' && lassoDrawing) { const last = lassoPoints[lassoPoints.length - 1]; if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) lassoPoints.push(p); redraw(); }
+  else if (tool === 'select' && dragStart && lassoDragOrigin && lassoMoveMode) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;lassoPoints=lassoDragOrigin.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+dx)),y:Math.max(0,Math.min(canvas.height,point.y+dy))}));syncActiveLasso();redraw(); }
+  else if (tool === 'select' && dragStart && selectedId) {
     const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
     const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
     if (Math.abs(dx) + Math.abs(dy) > 1) hasMoved = true;
     if (dragOrigin) {
       const origin = cloneItem(dragOrigin);
-      if (resizing && resizeHandle) {
-        resizeItemToBounds(origin, dragOrigin, resizeBoundsFromHandle(dragOrigin, resizeHandle, p));
+      if (resizing) {
+        const b = bounds(dragOrigin);
+        resizeItem(origin, dragOrigin, Math.max(0.05, (b.w + dx) / Math.max(1, b.w)), Math.max(0.05, (b.h + dy) / Math.max(1, b.h)));
       } else moveItem(origin, dx, dy);
       Object.assign(item, origin); redraw();
     }
   } else if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
-    if (selected) {
-      const b = bounds(selected);
-      const nearWest = Math.abs(p.x - (b.x - 5)) <= 10;
-      const nearEast = Math.abs(p.x - (b.x + b.w + 5)) <= 10;
-      const nearNorth = Math.abs(p.y - (b.y - 5)) <= 10;
-      const nearSouth = Math.abs(p.y - (b.y + b.h + 5)) <= 10;
-      if ((nearWest || nearEast) && (nearNorth || nearSouth)) {
-        canvas.style.cursor = (nearWest === nearNorth) ? 'nwse-resize' : 'nesw-resize';
-      } else canvas.style.cursor = hitTest(p) ? 'move' : 'default';
-    } else canvas.style.cursor = 'default';
+    if (selected) { const b = bounds(selected); canvas.style.cursor = Math.abs(p.x-(b.x+b.w)) <= 12 && Math.abs(p.y-(b.y+b.h)) <= 12 ? 'nwse-resize' : hitTest(p) ? 'move' : 'default'; }
+    else canvas.style.cursor = 'default';
   } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
+  if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
-  dragStart = null; dragOrigin = null; hasMoved = false; resizing = false; resizeHandle = null;
+  dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
 
 document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => setTool(el.dataset.tool as Tool)));
+function toggleLassoMove(): void { if(!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}lassoMoveMode=!lassoMoveMode;setTool('select');renderLassoLayers();showToast(lassoMoveMode?'Modo mover lazo activado: arrastra dentro del contorno':'Modo mover lazo desactivado'); }
+document.querySelector('#lasso-move')!.addEventListener('click',toggleLassoMove);
+document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoMove);
+function duplicateLasso(): void { if(lassoPoints.length<3||!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}const offset=24;const points=lassoPoints.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+offset)),y:Math.max(0,Math.min(canvas.height,point.y+offset))}));const copy={id:crypto.randomUUID(),name:'Lazo copia '+String(lassoSelections.length+1).padStart(2,'0'),points};lassoSelections.push(copy);activeLassoId=copy.id;lassoPoints=points.map(point=>({...point}));lassoMoveMode=true;setTool('select');redraw();showToast('Copia de la selección creada');}
+document.querySelector('#lasso-duplicate')!.addEventListener('click',duplicateLasso);
+document.querySelector('#lasso-copy-top')!.addEventListener('click',duplicateLasso);
+function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}hiddenLassoIds.delete(activeLassoId);lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;redraw();showToast('Selección quitada');}
+document.querySelector('#lasso-clear')!.addEventListener('click',removeActiveLasso);
+document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>clearLassoSelections('Contornos de lazo ocultos'));
 document.querySelector('#undo')!.addEventListener('click', undo);
 document.querySelector<HTMLInputElement>('#layer-name-input')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
@@ -465,11 +530,25 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
   item.fill = (event.currentTarget as HTMLInputElement).checked;
   snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
 });
+document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
+  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+hue+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} redraw(); });
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image')commitPhotoAdjustments(item,'Mezcla HSL aplicada; contorno oculto');});
+});
+document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
+  input.addEventListener('input', () => {
+    const item = items.find(candidate => candidate.id === selectedId);
+    if (!item || item.kind !== 'image') return;
+    const key = input.dataset.photoAdjust as 'exposure' | 'contrastAmount' | 'saturationAmount' | 'warmth' | 'highlights' | 'shadows' | 'whites' | 'blacks' | 'vibrance' | 'tint' | 'vignette' | 'grain';
+    item[key] = Number(input.value);
+    redraw();
+  });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') commitPhotoAdjustments(item,'Ajuste aplicado; contorno oculto'); });
+});
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
   item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
-  snapshot(); redraw(); showToast('Filtro de imagen aplicado');
+  commitPhotoAdjustments(item,'Filtro aplicado; contorno oculto');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
@@ -477,6 +556,7 @@ canvas.addEventListener('dblclick', event => {
   selectedId = item.id; editSelectedText();
 });
 document.querySelector('#redo')!.addEventListener('click', redo);
+window.addEventListener('keydown', event => { if (event.key === 'Escape' && lassoPoints.length) clearLassoSelections(); });
 document.querySelector('#clear')!.addEventListener('click', () => {
   if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
     if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
@@ -534,7 +614,10 @@ function saveProject(): void {
       name: document.querySelector<HTMLInputElement>('#project-name')!.value.trim() || 'Proyecto sin título',
       width: canvas.width,
       height: canvas.height,
-      items: savedItems
+      items: savedItems,
+      lassoSelections: lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})),
+      activeLassoId,
+      hiddenLassoIds: Array.from(hiddenLassoIds)
     };
     localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
     document.querySelector('#save-status')!.textContent = 'Guardado en este dispositivo';
@@ -552,6 +635,8 @@ document.querySelector('#save-project-btn')!.addEventListener('click', saveProje
 
 function createNewProject(): void {
   if (items.length && !window.confirm('¿Crear un proyecto nuevo? Los cambios no guardados se perderán. El último guardado seguirá disponible.')) return;
+  photoCommitVersion++;
+  projectRestoreVersion++;
   items = [];
   selectedId = null;
   activeStroke = null;
@@ -560,7 +645,18 @@ function createNewProject(): void {
   dragStart = null;
   dragOrigin = null;
   resizing = false;
-  resizeHandle = null;
+  lassoPoints = [];
+  lassoSelections = [];
+  activeLassoId = null;
+  hiddenLassoIds.clear();
+  lassoDrawing = false;
+  lassoMoveMode = false;
+  lassoDragOrigin = null;
+  const move = document.querySelector<HTMLButtonElement>('#lasso-move');
+  const topMove = document.querySelector<HTMLButtonElement>('#lasso-move-top');
+  [move, topMove].forEach(button => {
+    if (button) { button.setAttribute('aria-pressed', 'false'); button.classList.remove('active'); }
+  });
   history = [[]];
   historyIndex = 0;
   const name = 'Proyecto sin título';
@@ -620,11 +716,14 @@ function isValidSavedItem(value: unknown): value is Record<string, unknown> {
 }
 
 async function restoreProject(showMessages = true): Promise<void> {
+  const restoreVersion = ++projectRestoreVersion;
+  photoCommitVersion++;
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
     const project = JSON.parse(raw) as {
       version: number; name: string; width: number; height: number; items: unknown[];
+      lassoSelections?: {id:string;name:string;points:Point[]}[]; activeLassoId?: string | null; hiddenLassoIds?: string[];
     };
     if (project.version !== 1 || !Array.isArray(project.items) || typeof project.name !== 'string' ||
         !isFiniteNumber(project.width) || !isFiniteNumber(project.height)) {
@@ -650,7 +749,15 @@ async function restoreProject(showMessages = true): Promise<void> {
       }
       return saved as unknown as Item;
     }));
+    if (restoreVersion !== projectRestoreVersion) return;
     items = restored;
+    lassoSelections = Array.isArray(project.lassoSelections) && project.lassoSelections.every(selection=>selection && typeof selection.id==='string' && typeof selection.name==='string' && Array.isArray(selection.points) && selection.points.length>=3 && selection.points.every(isSavedPoint)) ? project.lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})) : [];
+    activeLassoId = lassoSelections.some(selection=>selection.id===project.activeLassoId) ? project.activeLassoId! : (lassoSelections[lassoSelections.length-1]?.id ?? null);
+    hiddenLassoIds = new Set(Array.isArray(project.hiddenLassoIds) ? project.hiddenLassoIds.filter(id=>typeof id==='string'&&lassoSelections.some(selection=>selection.id===id)) : []);
+    lassoPoints = lassoSelections.find(selection=>selection.id===activeLassoId)?.points.map(point=>({...point})) ?? [];
+    lassoMoveMode = false;
+    lassoDrawing = false;
+    lassoDragOrigin = null;
     selectedId = null;
     activeStroke = null;
     shapeStart = null;
@@ -658,7 +765,15 @@ async function restoreProject(showMessages = true): Promise<void> {
     dragStart = null;
     dragOrigin = null;
     resizing = false;
-    resizeHandle = null;
+    // Restore must also clear the visual state of controls left by the prior document.
+    const moveButton = document.querySelector<HTMLButtonElement>('#lasso-move');
+    const topMoveButton = document.querySelector<HTMLButtonElement>('#lasso-move-top');
+    [moveButton, topMoveButton].forEach(button => {
+      if (button) {
+        button.setAttribute('aria-pressed', 'false');
+        button.classList.remove('active');
+      }
+    });
     history = [items.map(cloneItem)];
     historyIndex = 0;
     const name = project.name.trim() || 'Proyecto sin título';
@@ -728,7 +843,7 @@ document.addEventListener('keydown', event => {
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); return; }
   if (event.key === 'Escape') {
     activeStroke = null; shapeStart = null; previewShape = null; selectedId = null;
-    dragStart = null; dragOrigin = null; resizing = false; resizeHandle = null; redraw();
+    dragStart = null; dragOrigin = null; resizing = false; redraw();
   }
 });
 redraw(); updateHistoryButtons(); setTool('select');
