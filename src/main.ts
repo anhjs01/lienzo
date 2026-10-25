@@ -164,6 +164,8 @@ type LassoHistoryState = { selections: { id: string; name: string; points: Point
 let lassoHistory: LassoHistoryState[] = [{ selections: [], activeId: null, points: [], hiddenIds: [] }];
 let historyIndex = 0;
 let selectedId: string | null = null;
+let objectLassoSelectedIds = new Set<string>();
+let groupDragOrigins: Map<string, Item> | null = null;
 let dragStart: Point | null = null;
 let dragOrigin: Item | null = null;
 let hasMoved = false;
@@ -300,7 +302,7 @@ function redraw(updatePanels = true): void {
   const selected = items.find(item => item.id === selectedId && item.visible);
   // Keep the selected layer available for photo adjustments, but only show its
   // transform handles while the object-selection tool is active.
-  if (selected && tool === 'select' && !lassoMoveMode) drawSelection(selected);
+  if (selected && tool === 'select' && !lassoMoveMode) { if(objectLassoSelectedIds.size>1){ for(const item of items)if(objectLassoSelectedIds.has(item.id)&&item.visible){const b=bounds(item);ctx.save();ctx.strokeStyle=item.id===selectedId?'#8065ed':'#16a085';ctx.lineWidth=item.id===selectedId?2.5:2;ctx.setLineDash([6,4]);ctx.strokeRect(b.x-4,b.y-4,b.w+8,b.h+8);ctx.restore();} } else drawSelection(selected); }
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   if (updatePanels) { renderLayers(); renderLayerProperties(); }
 }
@@ -555,7 +557,7 @@ function duplicateSelected(): void {
   redraw();
   showToast('Capa duplicada');
 }
-function deleteSelected(): void { const index = items.findIndex(item => item.id === selectedId); if (index < 0) return; items.splice(index,1); selectedId = null; snapshot(); redraw(); showToast('Capa eliminada'); }
+function deleteSelected(): void { if(objectLassoSelectedIds.size>1){const count=objectLassoSelectedIds.size;items=items.filter(item=>!objectLassoSelectedIds.has(item.id));objectLassoSelectedIds.clear();selectedId=null;snapshot();redraw();showToast(count+' objetos eliminados');return;}const index = items.findIndex(item => item.id === selectedId); if (index < 0) return; items.splice(index,1); selectedId = null; objectLassoSelectedIds.clear(); snapshot(); redraw(); showToast('Capa eliminada'); }
 canvas.addEventListener('pointerdown', event => {
   canvas.focus({ preventScroll: true });
   canvas.setPointerCapture(event.pointerId);
@@ -577,7 +579,7 @@ canvas.addEventListener('pointerdown', event => {
       const handle=handles.find(candidate=>Math.abs(p.x-candidate.x)<=10&&Math.abs(p.y-candidate.y)<=10);
       if(handle){dragStart=p;dragOrigin=cloneItem(selected);resizing=true;resizeHandle=handle.handle;hasMoved=false;redraw();return;}
     }
-    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; hasMoved = false; redraw(); return;
+    const hit = hitTest(p); if(hit&&objectLassoSelectedIds.has(hit.id)&&objectLassoSelectedIds.size>1){selectedId=hit.id;dragStart=p;groupDragOrigins=new Map(items.filter(item=>objectLassoSelectedIds.has(item.id)).map(item=>[item.id,cloneItem(item)]));dragOrigin=null;resizing=false;hasMoved=false;redraw();return;} selectedId = hit?.id ?? null; objectLassoSelectedIds.clear(); dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; groupDragOrigins=null; resizing = false; hasMoved = false; redraw(); return;
   }
   if (tool === 'text') {
     const text = window.prompt('Escribe tu texto:');
@@ -600,6 +602,7 @@ canvas.addEventListener('pointermove', event => {
     scheduleRedraw(false);
   }
   else if (tool === 'select' && dragStart && lassoDragOrigin && lassoMoveMode) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;lassoPoints=lassoDragOrigin.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+dx)),y:Math.max(0,Math.min(canvas.height,point.y+dy))}));syncActiveLasso();scheduleRedraw(false); }
+  else if (tool === 'select' && dragStart && selectedId && groupDragOrigins) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;for(const item of items){const origin=groupDragOrigins.get(item.id);if(origin){const moved=cloneItem(origin);moveItem(moved,dx,dy);Object.assign(item,moved);}}scheduleRedraw(false); }
   else if (tool === 'select' && dragStart && selectedId) {
     const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
     const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
@@ -626,12 +629,12 @@ canvas.addEventListener('pointermove', event => {
   } else if (shapeStart && previewShape) { previewShape.to = p; scheduleRedraw(false); }
 });
 function finishPointer(): void {
-  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) { lassoPoints=[]; selectedId=null; redraw(); showToast('Recorrido demasiado corto; dibuja un lazo más amplio'); } else if (tool === 'object-lasso') { const polygon=lassoPoints.map(point=>({...point})); const found=items.slice().reverse().find(item=>item.visible&&lassoIntersectsBounds(polygon,bounds(item))); selectedId=found?.id??null;lassoPoints=[];activeLassoId=null;lassoDrawing=false;redraw();showToast(found?'Objeto seleccionado: '+layerName(found):'No se encontró ningún objeto dentro del lazo'); } else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); redraw(); showToast('Lazo de área creado. Puedes moverlo o copiarlo desde sus controles.'); } }
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) { lassoPoints=[]; selectedId=null; redraw(); showToast('Recorrido demasiado corto; dibuja un lazo más amplio'); } else if (tool === 'object-lasso') { const polygon=lassoPoints.map(point=>({...point})); const foundItems=items.filter(item=>item.visible&&lassoIntersectsBounds(polygon,bounds(item)));const found=foundItems[foundItems.length-1]??null;objectLassoSelectedIds=new Set(foundItems.map(item=>item.id));selectedId=found?.id??null;lassoPoints=[];activeLassoId=null;lassoDrawing=false;redraw();showToast(foundItems.length>1?foundItems.length+' objetos seleccionados; puedes moverlos juntos o eliminarlos':found?'Objeto seleccionado: '+layerName(found):'No se encontró ningún objeto dentro del lazo'); } else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); redraw(); showToast('Lazo de área creado. Puedes moverlo o copiarlo desde sus controles.'); } }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); snapshot(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
-  dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false; resizeHandle = null;
+  dragStart = null; dragOrigin = null; groupDragOrigins=null; lassoDragOrigin=null; hasMoved = false; resizing = false; resizeHandle = null;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
