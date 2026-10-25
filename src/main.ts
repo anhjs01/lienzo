@@ -353,13 +353,14 @@ function commitAreaAdjustmentsToImages(source:ImageItem,message:string,polygon:P
     const original=document.createElement('canvas');original.width=width;original.height=height;
     const originalContext=original.getContext('2d');
     if(!originalContext)throw new Error('No se pudo conservar el aspecto previo de una capa');
+    const renderLassoPoints=lassoPoints;
     if(target===source){target.filter='none';target.exposure=0;target.contrastAmount=0;target.saturationAmount=0;target.warmth=0;target.highlights=0;target.shadows=0;target.whites=0;target.blacks=0;target.vibrance=0;target.tint=0;target.vignette=0;target.grain=0;target.hslMix={};}
-    target.opacity=1;originalContext.translate(-target.x,-target.y);
+    target.opacity=1;lassoPoints=[];originalContext.translate(-target.x,-target.y);
     try { paintItem(target,originalContext); }
-    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity; }
-    Object.assign(target,sourceSettings);target.opacity=1;
+    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity;lassoPoints=renderLassoPoints; }
+    Object.assign(target,sourceSettings);target.opacity=1;lassoPoints=[];
     try { localContext.translate(-target.x,-target.y);paintItem(target,localContext); }
-    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity; }
+    finally { Object.assign(target,savedSettings);target.opacity=savedOpacity;lassoPoints=renderLassoPoints; }
     const composite=document.createElement('canvas');composite.width=width;composite.height=height;
     const compositeContext=composite.getContext('2d');
     if(!compositeContext)throw new Error('No se pudo preparar la máscara de una capa');
