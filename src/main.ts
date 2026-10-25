@@ -470,22 +470,6 @@ function moveItem(item: Item, dx: number, dy: number): void {
   else if (item.kind === 'text') item.at = { x: item.at.x + dx, y: item.at.y + dy };
   else { item.x += dx; item.y += dy; }
 }
-function resizeItem(item: Item, original: Item, sx: number, sy: number): void {
-  const b = bounds(original);
-  if (item.kind === 'stroke' && original.kind === 'stroke') {
-    item.points = original.points.map(p => ({ x: b.x + (p.x - b.x) * sx, y: b.y + (p.y - b.y) * sy }));
-    item.width = Math.max(1, original.width * Math.min(sx, sy));
-  } else if (item.kind === 'shape' && original.kind === 'shape') {
-    item.from = { x: b.x + (original.from.x - b.x) * sx, y: b.y + (original.from.y - b.y) * sy };
-    item.to = { x: b.x + (original.to.x - b.x) * sx, y: b.y + (original.to.y - b.y) * sy };
-    item.width = Math.max(1, original.width * Math.min(sx, sy));
-  } else if (item.kind === 'text' && original.kind === 'text') {
-    item.at = { x: b.x + (original.at.x - b.x) * sx, y: b.y + (original.at.y - b.y) * sy };
-    item.size = Math.max(8, original.size * Math.max(0.1, (sx + sy) / 2));
-  } else if (item.kind === 'image' && original.kind === 'image') {
-    item.x = b.x; item.y = b.y; item.width = Math.max(1, original.width * sx); item.height = Math.max(1, original.height * sy);
-  }
-}
 function resizeBoundsFromHandle(original: {x:number;y:number;w:number;h:number}, handle: ResizeHandle, p: Point): {x:number;y:number;w:number;h:number} {
   const right=original.x+original.w, bottom=original.y+original.h;
   let left=original.x, top=original.y, nextRight=right, nextBottom=bottom;
