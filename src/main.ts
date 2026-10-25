@@ -515,7 +515,20 @@ function renderLayers(): void {
   list.innerHTML = '';
   items.map((item, i) => ({ item, i })).reverse().forEach(({ item, i }) => {
     const row = document.createElement('div'); row.className = 'layer-row' + (item.id === selectedId ? ' selected' : '') + (!item.visible ? ' layer-hidden' : '');
-    row.tabIndex = 0; row.setAttribute('role', 'button'); row.setAttribute('aria-label', 'Seleccionar capa ' + layerName(item));
+    row.tabIndex = 0; row.draggable = true; row.title = 'Arrastra para cambiar el orden de la capa'; row.setAttribute('role', 'button'); row.setAttribute('aria-label', 'Seleccionar capa ' + layerName(item));
+    row.addEventListener('dragstart', event => { event.dataTransfer?.setData('text/plain', item.id); if(event.dataTransfer)event.dataTransfer.effectAllowed='move'; row.classList.add('layer-dragging'); });
+    row.addEventListener('dragend', () => { row.classList.remove('layer-dragging'); list.querySelectorAll('.layer-drop-target').forEach(el=>el.classList.remove('layer-drop-target')); });
+    row.addEventListener('dragover', event => { event.preventDefault(); if(event.dataTransfer)event.dataTransfer.dropEffect='move'; row.classList.add('layer-drop-target'); });
+    row.addEventListener('dragleave', event => { if(!row.contains(event.relatedTarget as Node|null))row.classList.remove('layer-drop-target'); });
+    row.addEventListener('drop', event => {
+      event.preventDefault(); row.classList.remove('layer-drop-target');
+      const draggedId=event.dataTransfer?.getData('text/plain'); if(!draggedId||draggedId===item.id)return;
+      const visual=items.slice().reverse(),from=visual.findIndex(entry=>entry.id===draggedId),to=visual.findIndex(entry=>entry.id===item.id);
+      if(from<0||to<0)return;
+      const [moving]=visual.splice(from,1); if(!moving)return; visual.splice(to,0,moving);
+      items=visual.reverse(); selectedId=draggedId; snapshot(); redraw();
+      showToast('Orden de capas actualizado');
+    });
     row.addEventListener('click', () => { selectedId = item.id; redraw(); });
     row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectedId = item.id; redraw(); } });
     const thumb = document.createElement('span'); thumb.className = 'layer-thumb'; thumb.textContent = item.kind === 'text' ? 'T' : item.kind === 'shape' ? '◇' : item.kind === 'image' ? '▧' : '〰';
