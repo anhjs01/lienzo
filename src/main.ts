@@ -157,6 +157,7 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
     if(!selected)continue;
     let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
     r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
+    r=Math.max(0,Math.min(1,r));g=Math.max(0,Math.min(1,g));b=Math.max(0,Math.min(1,b));
     let [h,ss,l]=rgbToHsl(r*255,g*255,b*255);
     const shadowWeight=Math.pow(1-l,2),highlightWeight=Math.pow(l,2),whiteWeight=Math.max(0,(l-.65)/.35),blackWeight=Math.max(0,(.35-l)/.35);
     l+=shadows*shadowWeight*.45+highlights*highlightWeight*.38+whites*whiteWeight*.32-blacks*blackWeight*.32;
