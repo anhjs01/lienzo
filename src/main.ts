@@ -56,7 +56,7 @@ app.innerHTML = `
       <aside class="tool-rail" aria-label="Herramientas">
         <div class="rail-group">
           <button class="tool-button active" data-tool="select" title="Seleccionar (V)" aria-label="Seleccionar"><span class="tool-glyph">↖</span><small>Elegir</small></button>
-          <button class="tool-button" data-tool="lasso" title="Lazo de área (G): conserva una selección libre" aria-label="Lazo de área"><span class="tool-glyph">⌁</span><small>Área</small></button>\n          <button class="tool-button" data-tool="object-lasso" title="Lazo de objetos (Mayús+G): selecciona una capa dentro del recorrido" aria-label="Lazo de objetos"><span class="tool-glyph">⌘</span><small>Objeto</small></button>
+          <button class="tool-button" data-tool="lasso" title="Lazo de área (G): conserva una selección libre" aria-label="Lazo de área"><span class="tool-glyph">⌁</span><small>Área</small></button>\n          <button class="tool-button" data-tool="object-lasso" title="Lazo de objetos (Mayús+G): previsualiza y selecciona la capa superior que cruce el recorrido" aria-label="Lazo de objetos"><span class="tool-glyph">⌘</span><small>Objeto</small></button>
           <button class="tool-button" data-tool="pen" title="Pincel (B)" aria-label="Pincel"><span class="tool-glyph">✎</span><small>Pincel</small></button>
           <button class="tool-button" data-tool="eraser" title="Borrador (E)" aria-label="Borrador"><span class="tool-glyph">⌫</span><small>Borrar</small></button>
           <span class="rail-rule"></span>
@@ -295,6 +295,7 @@ function redraw(updatePanels = true): void {
   const allLassos = showLassoOverlay ? (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id)) : [];
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
   if(showLassoOverlay&&lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
+  if(tool==='object-lasso'&&lassoDrawing&&lassoPoints.length>=3){const candidate=items.slice().reverse().find(item=>item.visible&&lassoIntersectsBounds(lassoPoints,bounds(item)));if(candidate){const b=bounds(candidate);ctx.save();ctx.strokeStyle='#16a085';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(b.x-3,b.y-3,b.w+6,b.h+6);ctx.fillStyle='rgba(22,160,133,0.08)';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.restore();}}
   if (updatePanels) renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
   // Keep the selected layer available for photo adjustments, but only show its
