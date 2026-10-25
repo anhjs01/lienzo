@@ -208,7 +208,7 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
   const cs:{key:HslColor;center:number;range:number}[]=[{key:'red',center:0,range:25},{key:'orange',center:30,range:22},{key:'yellow',center:60,range:25},{key:'green',center:120,range:38},{key:'aqua',center:180,range:28},{key:'blue',center:220,range:35},{key:'purple',center:270,range:28},{key:'magenta',center:320,range:25}];
   for(let i=0;i<data.length;i+=4){
     if(data[i+3]===0)continue;
-    const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);
+    const pixel=i/4;
     if(maskPixels&&maskPixels[pixel*4+3]===0)continue;
     let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
     r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
