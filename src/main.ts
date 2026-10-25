@@ -182,8 +182,14 @@ function rgbToHsl(r:number,g:number,b:number):[number,number,number]{r/=255;g/=2
 function hslToRgb(h:number,ss:number,l:number):[number,number,number]{const c=(1-Math.abs(2*l-1))*ss,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r=0,g=0,b=0;if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}return[Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)];}
 function hueDistance(a:number,b:number):number{const d=Math.abs(a-b)%360;return Math.min(d,360-d);}
 function pointInLasso(x:number,y:number,polygon:Point[]=lassoPoints):boolean{if(polygon.length<3)return true;let inside=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const a=polygon[i]!,b=polygon[j]!;if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))inside=!inside;}return inside;}
+const processedImageCache = new WeakMap<ImageItem, { image: HTMLImageElement; key: string; canvas: HTMLCanvasElement }>();
 function renderHslImage(item:ImageItem):HTMLCanvasElement{
-  const off=document.createElement('canvas');off.width=Math.max(1,Math.round(item.width));off.height=Math.max(1,Math.round(item.height));
+  const width=Math.max(1,Math.round(item.width)),height=Math.max(1,Math.round(item.height));
+  const activeMask=lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]);
+  const key=JSON.stringify([width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,activeMask.map(p=>[Math.round(p.x*10)/10,Math.round(p.y*10)/10])]);
+  const cached=processedImageCache.get(item);
+  if(cached&&cached.image===item.image&&cached.key===key)return cached.canvas;
+  const off=document.createElement('canvas');off.width=width;off.height=height;
   const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);
   const imageData=oc.getImageData(0,0,off.width,off.height),data=imageData.data;
   const exposure=Math.pow(2,(item.exposure??0)/40),contrast=1+(item.contrastAmount??0)/100,saturation=1+(item.saturationAmount??0)/100,warmth=(item.warmth??0)/100,tint=(item.tint??0)/100,vibrance=(item.vibrance??0)/100;
@@ -211,7 +217,7 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
     else if(item.filter==='saturate'){const [hh,sss,ll]=rgbToHsl(rgb[0],rgb[1],rgb[2]);rgb=hslToRgb(hh,Math.min(1,sss*1.6),ll);}
     data[i]=rgb[0];data[i+1]=rgb[1];data[i+2]=rgb[2];
   }
-  oc.putImageData(imageData,0,0);return off;
+  oc.putImageData(imageData,0,0);processedImageCache.set(item,{image:item.image,key,canvas:off});return off;
 }
 function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   if (!item.visible) return;
@@ -255,7 +261,19 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   }
   target.restore();
 }
-function redraw(): void {
+let redrawFrame = 0;
+let pendingPanelRefresh = false;
+function scheduleRedraw(updatePanels = false): void {
+  pendingPanelRefresh ||= updatePanels;
+  if (redrawFrame) return;
+  redrawFrame = requestAnimationFrame(() => {
+    redrawFrame = 0;
+    const refreshPanels = pendingPanelRefresh;
+    pendingPanelRefresh = false;
+    redraw(refreshPanels);
+  });
+}
+function redraw(updatePanels = true): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   items.forEach(item => paintItem(item));
@@ -265,14 +283,13 @@ function redraw(): void {
   const allLassos = showLassoOverlay ? (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id)) : [];
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
   if(showLassoOverlay&&lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
-  renderLassoLayers();
+  if (updatePanels) renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
   // Keep the selected layer available for photo adjustments, but only show its
   // transform handles while the object-selection tool is active.
   if (selected && tool === 'select' && !lassoMoveMode) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
-  renderLayers();
-  renderLayerProperties();
+  if (updatePanels) { renderLayers(); renderLayerProperties(); }
 }
 function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
 function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;snapshot();const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
@@ -550,8 +567,16 @@ canvas.addEventListener('pointerdown', event => {
 });
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
-  if (tool === 'lasso' && lassoDrawing) { const last = lassoPoints[lassoPoints.length - 1]; if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) lassoPoints.push(p); redraw(); }
-  else if (tool === 'select' && dragStart && lassoDragOrigin && lassoMoveMode) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;lassoPoints=lassoDragOrigin.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+dx)),y:Math.max(0,Math.min(canvas.height,point.y+dy))}));syncActiveLasso();redraw(); }
+  if (tool === 'lasso' && lassoDrawing) {
+    const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
+    for (const sample of events) {
+      const point = pointFromEvent(sample);
+      const last = lassoPoints[lassoPoints.length - 1];
+      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.8) lassoPoints.push(point);
+    }
+    scheduleRedraw(false);
+  }
+  else if (tool === 'select' && dragStart && lassoDragOrigin && lassoMoveMode) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;lassoPoints=lassoDragOrigin.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+dx)),y:Math.max(0,Math.min(canvas.height,point.y+dy))}));syncActiveLasso();scheduleRedraw(false); }
   else if (tool === 'select' && dragStart && selectedId) {
     const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
     const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
@@ -561,14 +586,21 @@ canvas.addEventListener('pointermove', event => {
       if (resizing && resizeHandle) {
         resizeItemToBounds(origin, dragOrigin, resizeBoundsFromHandle(bounds(dragOrigin), resizeHandle, p));
       } else moveItem(origin, dx, dy);
-      Object.assign(item, origin); redraw();
+      Object.assign(item, origin); scheduleRedraw(false);
     }
   } else if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) { const b=bounds(selected);const handles: {x:number;y:number;cursor:string}[]=[{x:b.x-5,y:b.y-5,cursor:'nwse-resize'},{x:b.x+b.w+5,y:b.y-5,cursor:'nesw-resize'},{x:b.x-5,y:b.y+b.h+5,cursor:'nesw-resize'},{x:b.x+b.w+5,y:b.y+b.h+5,cursor:'nwse-resize'}];const handle=handles.find(candidate=>Math.abs(p.x-candidate.x)<=10&&Math.abs(p.y-candidate.y)<=10);canvas.style.cursor=handle?.cursor??(hitTest(p)?'move':'default'); }
     else canvas.style.cursor = 'default';
-  } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
-  else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
+  } else if (activeStroke) {
+    const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
+    for (const sample of events) {
+      const point = pointFromEvent(sample);
+      const last = activeStroke.points[activeStroke.points.length - 1];
+      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.65) activeStroke.points.push(point);
+    }
+    scheduleRedraw(false);
+  } else if (shapeStart && previewShape) { previewShape.to = p; scheduleRedraw(false); }
 });
 function finishPointer(): void {
   if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
