@@ -1,6 +1,6 @@
 import './style.css';
 
-type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
+type Tool = 'select' | 'lasso' | 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse' | 'text';
 type Point = { x: number; y: number };
 type LayerMeta = { id: string; opacity: number; visible: boolean; name?: string };
 type Stroke = LayerMeta & { kind: 'stroke'; points: Point[]; color: string; width: number; erase: boolean };
@@ -33,6 +33,7 @@ app.innerHTML = `
       <aside class="tool-rail" aria-label="Herramientas">
         <div class="rail-group">
           <button class="tool-button active" data-tool="select" title="Seleccionar (V)" aria-label="Seleccionar"><span class="tool-glyph">↖</span><small>Elegir</small></button>
+          <button class="tool-button" data-tool="lasso" title="Lazo: dibuja un área de selección" aria-label="Lazo"><span class="tool-glyph">⌁</span><small>Lazo</small></button>
           <button class="tool-button" data-tool="pen" title="Pincel (B)" aria-label="Pincel"><span class="tool-glyph">✎</span><small>Pincel</small></button>
           <button class="tool-button" data-tool="eraser" title="Borrador (E)" aria-label="Borrador"><span class="tool-glyph">⌫</span><small>Borrar</small></button>
           <span class="rail-rule"></span>
@@ -111,6 +112,8 @@ const sizeValue = document.querySelector<HTMLOutputElement>('#size-value')!;
 const colorValue = document.querySelector<HTMLSpanElement>('#color-value')!;
 const toast = document.querySelector<HTMLDivElement>('#toast')!;
 const fileInput = document.querySelector<HTMLInputElement>('#file-input')!;
+let lassoPoints: Point[] = [];
+let lassoDrawing = false;
 let tool: Tool = 'select';
 let items: Item[] = [];
 let history: Item[][] = [[]];
@@ -165,6 +168,7 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
+  if (lassoPoints.length > 1) { ctx.save(); ctx.beginPath(); ctx.moveTo(lassoPoints[0]!.x, lassoPoints[0]!.y); lassoPoints.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = '#7659ed'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); }
   const selected = items.find(item => item.id === selectedId && item.visible);
   if (selected) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
@@ -197,7 +201,7 @@ function showToast(message: string): void {
 function setTool(next: Tool): void {
   tool = next;
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.classList.toggle('active', el.dataset.tool === next));
-  const labels: Record<Tool, string> = { select: 'Seleccionar', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
+  const labels: Record<Tool, string> = { select: 'Seleccionar', lasso: 'Lazo de área', pen: 'Pincel', eraser: 'Borrador', line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse', text: 'Texto' };
   document.querySelector('#tool-label')!.textContent = labels[next];
   canvas.style.cursor = next === 'select' ? 'default' : next === 'text' ? 'text' : 'crosshair';
 }
@@ -311,6 +315,7 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
+  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; redraw(); return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) {
@@ -331,7 +336,8 @@ canvas.addEventListener('pointerdown', event => {
 });
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
-  if (tool === 'select' && dragStart && selectedId) {
+  if (tool === 'lasso' && lassoDrawing) { const last = lassoPoints[lassoPoints.length - 1]; if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) lassoPoints.push(p); redraw(); }
+  else if (tool === 'select' && dragStart && selectedId) {
     const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
     const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
     if (Math.abs(dx) + Math.abs(dy) > 1) hasMoved = true;
@@ -351,6 +357,7 @@ canvas.addEventListener('pointermove', event => {
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; redraw(); if (lassoPoints.length >= 3) showToast('Área de lazo seleccionada. El contorno permanecerá visible.'); }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
