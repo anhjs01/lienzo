@@ -455,6 +455,8 @@ function setTool(next: Tool): void {
     else button.setAttribute('aria-pressed', 'false');
   });
   canvas.style.cursor = next === 'select' ? 'default' : next === 'text' ? 'text' : 'crosshair';
+  // Repaint after changing tools so a previously drawn lasso overlay is actually removed from the canvas.
+  redraw();
 }
 function renderLayers(): void {
   const list = document.querySelector<HTMLDivElement>('#layers-list')!;
