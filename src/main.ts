@@ -18,16 +18,17 @@ if (!app) throw new Error('No se encontró el contenedor de Lienzo.');
 
 const hslColors: { key: HslColor; label: string }[] = [{key:'red',label:'Rojo'},{key:'orange',label:'Naranja'},{key:'yellow',label:'Amarillo'},{key:'green',label:'Verde'},{key:'aqua',label:'Aqua'},{key:'blue',label:'Azul'},{key:'purple',label:'Púrpura'},{key:'magenta',label:'Magenta'}];
 const hslBaseHue: Record<HslColor, number> = { red: 0, orange: 30, yellow: 60, green: 120, aqua: 180, blue: 220, purple: 275, magenta: 320 };
+const hslHueNeighbors: Record<HslColor, [number, number]> = { red: [30, 320], orange: [0, 60], yellow: [30, 120], green: [60, 180], aqua: [120, 220], blue: [180, 275], purple: [220, 320], magenta: [275, 0] };
 function updateHslSliderTrack(input: HTMLInputElement): void {
   const color = input.dataset.hslColor as HslColor | undefined;
   const axis = input.dataset.hslAxis;
   if (!color || !axis) return;
   const hue = hslBaseHue[color];
   if (axis === 'h') {
-    const stops = Array.from({ length: 7 }, (_, i) => `hsl(${(hue - 180 + i * 60 + 360) % 360} 85% 55%) ${i * (100 / 6)}%`);
-    input.style.setProperty('--slider-track', `linear-gradient(90deg, ${stops.join(',')})`);
+    const [leftHue, rightHue] = hslHueNeighbors[color];
+    input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${leftHue} 85% 55%) 0%, hsl(${hue} 85% 55%) 50%, hsl(${rightHue} 85% 55%) 100%)`);
   } else if (axis === 's') {
-    input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${hue} 0% 52%), hsl(${hue} 45% 52%), hsl(${hue} 100% 50%))`);
+    input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${hue} 0% 52%) 0%, hsl(${hue} 70% 50%) 50%, hsl(${hue} 100% 50%) 100%)`);
   } else {
     input.style.setProperty('--slider-track', `linear-gradient(90deg, hsl(${hue} 100% 0%), hsl(${hue} 85% 50%), hsl(${hue} 100% 100%))`);
   }
