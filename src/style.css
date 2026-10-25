@@ -134,3 +134,10 @@
 #brush-size:hover::-webkit-slider-thumb,.opacity-slider:hover::-webkit-slider-thumb{transform:scale(1.12)}
 .lasso-actions #lasso-hide-top{border-color:#51446e;background:#2a2636;color:#d9d0ff}
 .lasso-actions #lasso-hide-top:hover{border-color:#a995ff;background:#39304e}
+
+/* Clear layer-stack feedback while reordering by drag and drop. */
+.layer-row[draggable="true"]{cursor:grab;transition:background .16s ease,border-color .16s ease,opacity .16s ease,transform .16s ease}
+.layer-row[draggable="true"]:active{cursor:grabbing}
+.layer-row.layer-dragging{opacity:.38;transform:scale(.985)}
+.layer-row.layer-drop-target{background:#29243a;border-color:#9d87ff;box-shadow:inset 0 2px #a995ff}
+.layer-row[draggable="true"]:focus-visible{outline:2px solid #a995ff;outline-offset:2px}
