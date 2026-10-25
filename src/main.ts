@@ -9,7 +9,7 @@ type TextItem = LayerMeta & { kind: 'text'; at: Point; text: string; color: stri
 type ImageFilter = 'none' | 'grayscale' | 'sepia' | 'contrast' | 'saturate' | 'blur';
 type HslMix = { h: number; s: number; l: number };
 type HslColor = 'red' | 'orange' | 'yellow' | 'green' | 'aqua' | 'blue' | 'purple' | 'magenta';
-type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter; exposure?: number; contrastAmount?: number; saturationAmount?: number; warmth?: number; highlights?: number; shadows?: number; whites?: number; blacks?: number; vibrance?: number; tint?: number; vignette?: number; grain?: number; hslMix?: Partial<Record<HslColor, HslMix>> };
+type ImageItem = LayerMeta & { kind: 'image'; image: HTMLImageElement; x: number; y: number; width: number; height: number; filter: ImageFilter; exposure?: number; contrastAmount?: number; saturationAmount?: number; warmth?: number; highlights?: number; shadows?: number; whites?: number; blacks?: number; vibrance?: number; tint?: number; vignette?: number; grain?: number; maskPoints?: Point[]; hslMix?: Partial<Record<HslColor, HslMix>> };
 type Item = Stroke | Shape | TextItem | ImageItem;
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -135,7 +135,7 @@ let dragOrigin: Item | null = null;
 let hasMoved = false;
 let resizing = false;
 function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
-function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'image' && item.hslMix ? { hslMix: Object.fromEntries(Object.entries(item.hslMix).map(([k,v]) => [k, v ? { ...v } : v])) as ImageItem['hslMix'] } : {}), ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
+function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'image' && item.maskPoints ? { maskPoints: item.maskPoints.map(p => ({ ...p })) } : {}), ...(item.kind === 'image' && item.hslMix ? { hslMix: Object.fromEntries(Object.entries(item.hslMix).map(([k,v]) => [k, v ? { ...v } : v])) as ImageItem['hslMix'] } : {}), ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
 let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
@@ -148,7 +148,7 @@ function pointFromEvent(event: MouseEvent): Point {
 function rgbToHsl(r:number,g:number,b:number):[number,number,number]{r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min,l=(max+min)/2;let h=0,ss=0;if(d){ss=d/(1-Math.abs(2*l-1));if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}return[h,ss,l];}
 function hslToRgb(h:number,ss:number,l:number):[number,number,number]{const c=(1-Math.abs(2*l-1))*ss,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r=0,g=0,b=0;if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}return[Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)];}
 function hueDistance(a:number,b:number):number{const d=Math.abs(a-b)%360;return Math.min(d,360-d);}
-function pointInLasso(x:number,y:number):boolean{if(lassoPoints.length<3)return true;let inside=false;for(let i=0,j=lassoPoints.length-1;i<lassoPoints.length;j=i++){const a=lassoPoints[i]!,b=lassoPoints[j]!;if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))inside=!inside;}return inside;}
+function pointInLasso(x:number,y:number,polygon:Point[]=lassoPoints):boolean{if(polygon.length<3)return true;let inside=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const a=polygon[i]!,b=polygon[j]!;if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))inside=!inside;}return inside;}
 function renderHslImage(item:ImageItem):HTMLCanvasElement{
   const off=document.createElement('canvas');off.width=Math.max(1,Math.round(item.width));off.height=Math.max(1,Math.round(item.height));
   const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);
@@ -219,6 +219,7 @@ function redraw(): void {
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
   const allLassos = lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : []);
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
+  if(lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
   renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
   if (selected) drawSelection(selected);
@@ -476,7 +477,7 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
 });
 document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
   input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;dot.style.backgroundColor='hsl('+hue+' 78% 52%)';} redraw(); });
-  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){snapshot();clearLassoSelections('Mezcla HSL aplicada; contorno quitado');}});
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p}));snapshot();clearLassoSelections('Mezcla HSL aplicada; contorno quitado');}});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
   input.addEventListener('input', () => {
@@ -486,13 +487,13 @@ document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input
     item[key] = Number(input.value);
     redraw();
   });
-  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { snapshot(); clearLassoSelections('Ajuste aplicado; contorno quitado'); } });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); clearLassoSelections('Ajuste aplicado; contorno quitado'); } });
 });
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
   item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
-  snapshot(); clearLassoSelections('Filtro aplicado; contorno quitado');
+  if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); clearLassoSelections('Filtro aplicado; contorno quitado');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
