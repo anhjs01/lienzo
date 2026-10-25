@@ -120,6 +120,8 @@ let dragStart: Point | null = null;
 let dragOrigin: Item | null = null;
 let hasMoved = false;
 let resizing = false;
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
+let resizeHandle: ResizeHandle | null = null;
 function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
 function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
@@ -266,21 +268,34 @@ function moveItem(item: Item, dx: number, dy: number): void {
   else if (item.kind === 'text') item.at = { x: item.at.x + dx, y: item.at.y + dy };
   else { item.x += dx; item.y += dy; }
 }
-function resizeItem(item: Item, original: Item, sx: number, sy: number): void {
+function resizeItemToBounds(item: Item, original: Item, next: { x: number; y: number; w: number; h: number }): void {
   const b = bounds(original);
+  const sx = next.w / Math.max(1, b.w);
+  const sy = next.h / Math.max(1, b.h);
+  const map = (p: Point): Point => ({ x: next.x + (p.x - b.x) * sx, y: next.y + (p.y - b.y) * sy });
   if (item.kind === 'stroke' && original.kind === 'stroke') {
-    item.points = original.points.map(p => ({ x: b.x + (p.x - b.x) * sx, y: b.y + (p.y - b.y) * sy }));
+    item.points = original.points.map(map);
     item.width = Math.max(1, original.width * Math.min(sx, sy));
   } else if (item.kind === 'shape' && original.kind === 'shape') {
-    item.from = { x: b.x + (original.from.x - b.x) * sx, y: b.y + (original.from.y - b.y) * sy };
-    item.to = { x: b.x + (original.to.x - b.x) * sx, y: b.y + (original.to.y - b.y) * sy };
+    item.from = map(original.from);
+    item.to = map(original.to);
     item.width = Math.max(1, original.width * Math.min(sx, sy));
   } else if (item.kind === 'text' && original.kind === 'text') {
-    item.at = { x: b.x + (original.at.x - b.x) * sx, y: b.y + (original.at.y - b.y) * sy };
+    item.at = map(original.at);
     item.size = Math.max(8, original.size * Math.max(0.1, (sx + sy) / 2));
   } else if (item.kind === 'image' && original.kind === 'image') {
-    item.x = b.x; item.y = b.y; item.width = Math.max(1, original.width * sx); item.height = Math.max(1, original.height * sy);
+    item.x = next.x; item.y = next.y;
+    item.width = Math.max(1, next.w); item.height = Math.max(1, next.h);
   }
+}
+function resizeBoundsFromHandle(original: Item, handle: ResizeHandle, p: Point): { x: number; y: number; w: number; h: number } {
+  const b = bounds(original);
+  const minSize = 12;
+  const left = handle.endsWith('w') ? Math.min(p.x, b.x + b.w - minSize) : b.x;
+  const right = handle.endsWith('e') ? Math.max(p.x, b.x + minSize) : b.x + b.w;
+  const top = handle.startsWith('n') ? Math.min(p.y, b.y + b.h - minSize) : b.y;
+  const bottom = handle.startsWith('s') ? Math.max(p.y, b.y + minSize) : b.y + b.h;
+  return { x: left, y: top, w: Math.max(minSize, right - left), h: Math.max(minSize, bottom - top) };
 }
 function hitTest(p: Point): Item | null {
   for (let i = items.length - 1; i >= 0; i--) { const item = items[i]!; if (!item.visible) continue; const b = bounds(item); if (p.x >= b.x-8 && p.x <= b.x+b.w+8 && p.y >= b.y-8 && p.y <= b.y+b.h+8) return item; }
@@ -315,11 +330,18 @@ canvas.addEventListener('pointerdown', event => {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) {
       const b = bounds(selected);
-      if (Math.abs(p.x - (b.x + b.w)) <= 12 && Math.abs(p.y - (b.y + b.h)) <= 12) {
-        dragStart = p; dragOrigin = cloneItem(selected); resizing = true; hasMoved = false; redraw(); return;
+      const handles: { key: ResizeHandle; x: number; y: number }[] = [
+        { key: 'nw', x: b.x - 5, y: b.y - 5 },
+        { key: 'ne', x: b.x + b.w + 5, y: b.y - 5 },
+        { key: 'sw', x: b.x - 5, y: b.y + b.h + 5 },
+        { key: 'se', x: b.x + b.w + 5, y: b.y + b.h + 5 }
+      ];
+      const handle = handles.find(candidate => Math.abs(p.x - candidate.x) <= 9 && Math.abs(p.y - candidate.y) <= 9);
+      if (handle) {
+        dragStart = p; dragOrigin = cloneItem(selected); resizing = true; resizeHandle = handle.key; hasMoved = false; redraw(); return;
       }
     }
-    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; hasMoved = false; redraw(); return;
+    const hit = hitTest(p); selectedId = hit?.id ?? null; dragStart = hit ? p : null; dragOrigin = hit ? cloneItem(hit) : null; resizing = false; resizeHandle = null; hasMoved = false; redraw(); return;
   }
   if (tool === 'text') {
     const text = window.prompt('Escribe tu texto:');
@@ -337,9 +359,8 @@ canvas.addEventListener('pointermove', event => {
     if (Math.abs(dx) + Math.abs(dy) > 1) hasMoved = true;
     if (dragOrigin) {
       const origin = cloneItem(dragOrigin);
-      if (resizing) {
-        const b = bounds(dragOrigin);
-        resizeItem(origin, dragOrigin, Math.max(0.05, (b.w + dx) / Math.max(1, b.w)), Math.max(0.05, (b.h + dy) / Math.max(1, b.h)));
+      if (resizing && resizeHandle) {
+        resizeItemToBounds(origin, dragOrigin, resizeBoundsFromHandle(dragOrigin, resizeHandle, p));
       } else moveItem(origin, dx, dy);
       Object.assign(item, origin); redraw();
     }
@@ -354,7 +375,7 @@ function finishPointer(): void {
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
-  dragStart = null; dragOrigin = null; hasMoved = false; resizing = false;
+  dragStart = null; dragOrigin = null; hasMoved = false; resizing = false; resizeHandle = null;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
@@ -487,6 +508,7 @@ function createNewProject(): void {
   dragStart = null;
   dragOrigin = null;
   resizing = false;
+  resizeHandle = null;
   history = [[]];
   historyIndex = 0;
   const name = 'Proyecto sin título';
@@ -584,6 +606,7 @@ async function restoreProject(showMessages = true): Promise<void> {
     dragStart = null;
     dragOrigin = null;
     resizing = false;
+    resizeHandle = null;
     history = [items.map(cloneItem)];
     historyIndex = 0;
     const name = project.name.trim() || 'Proyecto sin título';
@@ -653,7 +676,7 @@ document.addEventListener('keydown', event => {
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); return; }
   if (event.key === 'Escape') {
     activeStroke = null; shapeStart = null; previewShape = null; selectedId = null;
-    dragStart = null; dragOrigin = null; resizing = false; redraw();
+    dragStart = null; dragOrigin = null; resizing = false; resizeHandle = null; redraw();
   }
 });
 redraw(); updateHistoryButtons(); setTool('select');
