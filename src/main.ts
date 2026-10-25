@@ -32,6 +32,7 @@ app.innerHTML = `
         <button class="button button-quiet" id="download-project-btn" title="Descargar una copia editable del proyecto">Descargar .lienzo</button>
         <button class="button button-quiet" id="restore-project-btn" title="Recuperar el último proyecto guardado">Abrir guardado</button>
         <button class="button button-quiet" id="open-project-file-btn" title="Abrir un archivo .lienzo">Abrir archivo</button>
+        <button class="button button-quiet" id="inspector-toggle" aria-pressed="true" title="Mostrar u ocultar el panel de detalles">Panel</button>
         <button class="button button-primary" id="export-btn"><span>↗</span> Exportar</button>
       </div>
     </header>
@@ -582,7 +583,7 @@ canvas.addEventListener('pointercancel', finishPointer);
 
 function hideLassoOverlay(): void { activePhotoSection=null; document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.classList.remove('active')); lassoMoveMode=false; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw(); }
 document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => { const next=el.dataset.tool as Tool; if(next!=='lasso')hideLassoOverlay(); else { activePhotoSection=null; document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.classList.remove('active')); } setTool(next); }));
-document.addEventListener('pointerdown',event=>{const target=event.target;if(!(target instanceof Element)||target===canvas||canvas.contains(target))return;if(target.closest('[data-photo-jump],.photo-adjustments,.hsl-color,.image-filter-control,.lasso-layer-panel,.lasso-actions'))return;hideLassoOverlay();});
+document.addEventListener('pointerdown',event=>{const target=event.target;if(!(target instanceof Element)||target===canvas||canvas.contains(target))return;if(target.closest('#inspector,[data-photo-jump],.photo-adjustments,.hsl-color,.image-filter-control,.lasso-layer-panel,.lasso-actions'))return;hideLassoOverlay();selectedId=null;redraw();});
 function toggleLassoMove(): void { if(!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}lassoMoveMode=!lassoMoveMode;setTool('select');renderLassoLayers();showToast(lassoMoveMode?'Modo mover lazo activado: arrastra dentro del contorno':'Modo mover lazo desactivado'); }
 document.querySelector('#lasso-move')!.addEventListener('click',toggleLassoMove);
 document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoMove);
@@ -966,8 +967,9 @@ document.querySelector('#export-btn')!.addEventListener('click', () => {
     link.click(); URL.revokeObjectURL(url); showToast('Exportación PNG preparada');
   }, 'image/png');
 });
-document.querySelector('#close-inspector')!.addEventListener('click', () => document.querySelector('#inspector')!.classList.toggle('collapsed'));
-document.querySelector('#mobile-more')!.addEventListener('click', () => document.querySelector('#inspector')!.classList.toggle('mobile-open'));
+document.querySelector('#close-inspector')!.addEventListener('click', () => { const panel=document.querySelector('#inspector')!; panel.classList.toggle('collapsed'); document.querySelector<HTMLButtonElement>('#inspector-toggle')?.setAttribute('aria-pressed', String(!panel.classList.contains('collapsed'))); });
+document.querySelector('#inspector-toggle')!.addEventListener('click', () => { const panel=document.querySelector('#inspector')!; panel.classList.toggle('collapsed'); document.querySelector<HTMLButtonElement>('#inspector-toggle')!.setAttribute('aria-pressed', String(!panel.classList.contains('collapsed'))); });
+document.querySelector('#mobile-more')!.addEventListener('click', () => { const panel=document.querySelector('#inspector')!; panel.classList.toggle('mobile-open'); document.querySelector<HTMLButtonElement>('#mobile-more')!.classList.toggle('active', panel.classList.contains('mobile-open')); });
 document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement;
   const typing = target.matches('input, textarea, select') || target.isContentEditable;
@@ -983,7 +985,7 @@ document.addEventListener('keydown', event => {
   if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
   const keys: Record<string, Tool> = { v: 'select', b: 'pen', e: 'eraser', l: 'line', r: 'rect', o: 'ellipse', t: 'text' };
   const next = keys[event.key.toLowerCase()];
-  if (next) { setTool(next); return; }
+  if (next) { if (next !== 'lasso') hideLassoOverlay(); else { activePhotoSection = null; document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button => button.classList.remove('active')); } setTool(next); return; }
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); return; }
   if (event.key === 'Escape') {
     activeStroke = null; shapeStart = null; previewShape = null; selectedId = null;
