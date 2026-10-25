@@ -123,6 +123,7 @@ const fileInput = document.querySelector<HTMLInputElement>('#file-input')!;
 let lassoPoints: Point[] = [];
 let lassoSelections: { id: string; name: string; points: Point[] }[] = [];
 let activeLassoId: string | null = null;
+let hiddenLassoIds = new Set<string>();
 let lassoMoveMode = false;
 let lassoDragOrigin: Point[] | null = null;
 let lassoDrawing = false;
@@ -229,7 +230,7 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
-  const allLassos = lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : []);
+  const allLassos = (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id));
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
   if(lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
   renderLassoLayers();
@@ -240,9 +241,9 @@ function redraw(): void {
   renderLayerProperties();
 }
 function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
-function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
-function hideAppliedLasso(message:string): void { lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
-function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
+function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
+function hideAppliedLasso(message:string): void { if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
+function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
 function renderLassoLayers(): void {
  const panel=document.querySelector<HTMLDivElement>('#lasso-layer-panel');const list=document.querySelector<HTMLDivElement>('#lasso-layer-list');const actions=document.querySelector<HTMLDivElement>('#lasso-actions');
  if(panel)panel.hidden=lassoSelections.length===0;if(actions)actions.hidden=lassoSelections.length===0;if(!list)return;list.innerHTML='';
@@ -454,7 +455,7 @@ document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoM
 function duplicateLasso(): void { if(lassoPoints.length<3||!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}const offset=24;const points=lassoPoints.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+offset)),y:Math.max(0,Math.min(canvas.height,point.y+offset))}));const copy={id:crypto.randomUUID(),name:'Lazo copia '+String(lassoSelections.length+1).padStart(2,'0'),points};lassoSelections.push(copy);activeLassoId=copy.id;lassoPoints=points.map(point=>({...point}));lassoMoveMode=true;setTool('select');redraw();showToast('Copia de la selección creada');}
 document.querySelector('#lasso-duplicate')!.addEventListener('click',duplicateLasso);
 document.querySelector('#lasso-copy-top')!.addEventListener('click',duplicateLasso);
-function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;redraw();showToast('Selección quitada');}
+function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}hiddenLassoIds.delete(activeLassoId);lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;redraw();showToast('Selección quitada');}
 document.querySelector('#lasso-clear')!.addEventListener('click',removeActiveLasso);
 document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>clearLassoSelections('Contornos de lazo ocultos'));
 document.querySelector('#undo')!.addEventListener('click', undo);
@@ -575,7 +576,8 @@ function saveProject(): void {
       height: canvas.height,
       items: savedItems,
       lassoSelections: lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})),
-      activeLassoId
+      activeLassoId,
+      hiddenLassoIds: Array.from(hiddenLassoIds)
     };
     localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
     document.querySelector('#save-status')!.textContent = 'Guardado en este dispositivo';
@@ -665,7 +667,7 @@ async function restoreProject(showMessages = true): Promise<void> {
     if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
     const project = JSON.parse(raw) as {
       version: number; name: string; width: number; height: number; items: unknown[];
-      lassoSelections?: {id:string;name:string;points:Point[]}[]; activeLassoId?: string | null;
+      lassoSelections?: {id:string;name:string;points:Point[]}[]; activeLassoId?: string | null; hiddenLassoIds?: string[];
     };
     if (project.version !== 1 || !Array.isArray(project.items) || typeof project.name !== 'string' ||
         !isFiniteNumber(project.width) || !isFiniteNumber(project.height)) {
@@ -694,6 +696,7 @@ async function restoreProject(showMessages = true): Promise<void> {
     items = restored;
     lassoSelections = Array.isArray(project.lassoSelections) && project.lassoSelections.every(selection=>selection && typeof selection.id==='string' && typeof selection.name==='string' && Array.isArray(selection.points) && selection.points.length>=3 && selection.points.every(isSavedPoint)) ? project.lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})) : [];
     activeLassoId = lassoSelections.some(selection=>selection.id===project.activeLassoId) ? project.activeLassoId! : (lassoSelections[lassoSelections.length-1]?.id ?? null);
+    hiddenLassoIds = new Set(Array.isArray(project.hiddenLassoIds) ? project.hiddenLassoIds.filter(id=>typeof id==='string'&&lassoSelections.some(selection=>selection.id===id)) : []);
     lassoPoints = lassoSelections.find(selection=>selection.id===activeLassoId)?.points.map(point=>({...point})) ?? [];
     lassoMoveMode = false;
     selectedId = null;
