@@ -143,7 +143,32 @@ function rgbToHsl(r:number,g:number,b:number):[number,number,number]{r/=255;g/=2
 function hslToRgb(h:number,ss:number,l:number):[number,number,number]{const c=(1-Math.abs(2*l-1))*ss,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r=0,g=0,b=0;if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}return[Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)];}
 function hueDistance(a:number,b:number):number{const d=Math.abs(a-b)%360;return Math.min(d,360-d);}
 function pointInLasso(x:number,y:number):boolean{if(lassoPoints.length<3)return true;let inside=false;for(let i=0,j=lassoPoints.length-1;i<lassoPoints.length;j=i++){const a=lassoPoints[i]!,b=lassoPoints[j]!;if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))inside=!inside;}return inside;}
-function renderHslImage(item:ImageItem):HTMLCanvasElement{const off=document.createElement('canvas');off.width=Math.max(1,Math.round(item.width));off.height=Math.max(1,Math.round(item.height));const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);const data=oc.getImageData(0,0,off.width,off.height);const cs:{key:HslColor;center:number;range:number}[]=[{key:'red',center:0,range:25},{key:'orange',center:30,range:22},{key:'yellow',center:60,range:25},{key:'green',center:120,range:38},{key:'aqua',center:180,range:28},{key:'blue',center:220,range:35},{key:'purple',center:270,range:28},{key:'magenta',center:320,range:25}];for(let i=0;i<data.data.length;i+=4){const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);if(!pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height))continue;const [h,ss,l]=rgbToHsl(data.data[i]!,data.data[i+1]!,data.data[i+2]!);let dh=0,ds=0,dl=0;for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const w=Math.max(0,1-hueDistance(h,c.center)/c.range);dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}const rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));data.data[i]=rgb[0];data.data[i+1]=rgb[1];data.data[i+2]=rgb[2];}oc.putImageData(data,0,0);return off;}
+function renderHslImage(item:ImageItem):HTMLCanvasElement{
+  const off=document.createElement('canvas');off.width=Math.max(1,Math.round(item.width));off.height=Math.max(1,Math.round(item.height));
+  const oc=off.getContext('2d',{willReadFrequently:true});if(!oc)return off;oc.drawImage(item.image,0,0,off.width,off.height);
+  const imageData=oc.getImageData(0,0,off.width,off.height),data=imageData.data;
+  const exposure=Math.pow(2,(item.exposure??0)/40),contrast=1+(item.contrastAmount??0)/100,saturation=1+(item.saturationAmount??0)/100,warmth=(item.warmth??0)/100,tint=(item.tint??0)/100,vibrance=(item.vibrance??0)/100;
+  const highlights=(item.highlights??0)/100,shadows=(item.shadows??0)/100,whites=(item.whites??0)/100,blacks=(item.blacks??0)/100;
+  const cs:{key:HslColor;center:number;range:number}[]=[{key:'red',center:0,range:25},{key:'orange',center:30,range:22},{key:'yellow',center:60,range:25},{key:'green',center:120,range:38},{key:'aqua',center:180,range:28},{key:'blue',center:220,range:35},{key:'purple',center:270,range:28},{key:'magenta',center:320,range:25}];
+  for(let i=0;i<data.length;i+=4){
+    if(data[i+3]===0)continue;
+    const pixel=Math.floor(i/4),px=pixel%off.width,py=Math.floor(pixel/off.width);
+    const selected=pointInLasso(item.x+(px/off.width)*item.width,item.y+(py/off.height)*item.height);
+    if(!selected)continue;
+    let r=data[i]!/255,g=data[i+1]!/255,b=data[i+2]!/255;
+    r*=exposure*(1+warmth*.22+tint*.08);g*=exposure*(1-tint*.12);b*=exposure*(1-warmth*.22+tint*.08);
+    let [h,ss,l]=rgbToHsl(r*255,g*255,b*255);
+    const shadowWeight=Math.pow(1-l,2),highlightWeight=Math.pow(l,2),whiteWeight=Math.max(0,(l-.65)/.35),blackWeight=Math.max(0,(.35-l)/.35);
+    l+=shadows*shadowWeight*.45+highlights*highlightWeight*.38+whites*whiteWeight*.32-blacks*blackWeight*.32;
+    l=Math.max(0,Math.min(1,(l-.5)*contrast+.5));
+    ss=Math.max(0,Math.min(1,ss*(saturation+vibrance*(1-ss))));
+    let dh=0,ds=0,dl=0;
+    for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const w=Math.max(0,1-hueDistance(h,c.center)/c.range);dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}
+    const rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));
+    data[i]=rgb[0];data[i+1]=rgb[1];data[i+2]=rgb[2];
+  }
+  oc.putImageData(imageData,0,0);return off;
+}
 function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
   if (!item.visible) return;
   target.save(); target.globalAlpha *= item.opacity;
@@ -166,10 +191,9 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
     const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
-    const exposure = item.exposure ?? 0, contrastAmount = item.contrastAmount ?? 0, saturationAmount = item.saturationAmount ?? 0, warmth = item.warmth ?? 0, vibrance = item.vibrance ?? 0, tint = item.tint ?? 0, highlights = item.highlights ?? 0, shadows = item.shadows ?? 0, whites = item.whites ?? 0, blacks = item.blacks ?? 0;
-    target.filter = [(filters[item.filter] && item.filter !== 'none') ? filters[item.filter] : '', `brightness(${100 + exposure}%)`, `contrast(${100 + contrastAmount}%)`, `saturate(${100 + saturationAmount}%)`, `sepia(${Math.max(0, warmth) / 100})`, `saturate(${Math.max(0.1, 1 + vibrance / 100)})`, `brightness(${100 + (highlights + shadows + whites + blacks) / 4}%)`, `hue-rotate(${tint * 0.35}deg)`].filter(Boolean).join(' ');
-    const hslActive = !!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0));
-    if (hslActive) target.drawImage(renderHslImage(item), item.x, item.y, item.width, item.height); else target.drawImage(item.image, item.x, item.y, item.width, item.height);
+    target.filter = filters[item.filter] ?? 'none';
+    const hasAdjustments = [item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint].some(v => typeof v === 'number' && v !== 0) || (!!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0)));
+    if (hasAdjustments) target.drawImage(renderHslImage(item), item.x, item.y, item.width, item.height); else target.drawImage(item.image, item.x, item.y, item.width, item.height);
     if ((item.vignette ?? 0) > 0) { const amount = (item.vignette ?? 0) / 100; const gradient = target.createRadialGradient(item.x + item.width / 2, item.y + item.height / 2, Math.min(item.width, item.height) * 0.12, item.x + item.width / 2, item.y + item.height / 2, Math.max(item.width, item.height) * 0.72); gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(1, `rgba(0,0,0,${amount * 0.72})`); target.save(); target.fillStyle = gradient; target.fillRect(item.x, item.y, item.width, item.height); target.restore(); }
     if ((item.grain ?? 0) > 0) { const amount = (item.grain ?? 0) / 100; const step = Math.max(3, Math.round(7 - amount * 4)); target.save(); target.globalAlpha *= amount * 0.22; for (let y = item.y; y < item.y + item.height; y += step) for (let x = item.x; x < item.x + item.width; x += step) { const noise = ((Math.imul(Math.floor(x) + 1, 374761393) ^ Math.imul(Math.floor(y) + 1, 668265263)) >>> 0) % 2 ? 255 : 0; target.fillStyle = `rgb(${noise},${noise},${noise})`; target.fillRect(x, y, step * 0.45, step * 0.45); } target.restore(); }
     target.filter = 'none';
