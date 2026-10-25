@@ -634,6 +634,7 @@ document.querySelector('#save-project-btn')!.addEventListener('click', saveProje
 
 function createNewProject(): void {
   if (items.length && !window.confirm('¿Crear un proyecto nuevo? Los cambios no guardados se perderán. El último guardado seguirá disponible.')) return;
+  photoCommitVersion++;
   items = [];
   selectedId = null;
   activeStroke = null;
@@ -642,6 +643,18 @@ function createNewProject(): void {
   dragStart = null;
   dragOrigin = null;
   resizing = false;
+  lassoPoints = [];
+  lassoSelections = [];
+  activeLassoId = null;
+  hiddenLassoIds.clear();
+  lassoDrawing = false;
+  lassoMoveMode = false;
+  lassoDragOrigin = null;
+  const move = document.querySelector<HTMLButtonElement>('#lasso-move');
+  const topMove = document.querySelector<HTMLButtonElement>('#lasso-move-top');
+  [move, topMove].forEach(button => {
+    if (button) { button.setAttribute('aria-pressed', 'false'); button.classList.remove('active'); }
+  });
   history = [[]];
   historyIndex = 0;
   const name = 'Proyecto sin título';
