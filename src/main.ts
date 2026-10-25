@@ -277,6 +277,26 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
 }
 let redrawFrame = 0;
 let pendingPanelRefresh = false;
+let livePreviewBase: HTMLCanvasElement | null = null;
+let livePreviewFrame = 0;
+function captureLivePreviewBase(): void {
+  if (!livePreviewBase) livePreviewBase = document.createElement('canvas');
+  if (livePreviewBase.width !== canvas.width) livePreviewBase.width = canvas.width;
+  if (livePreviewBase.height !== canvas.height) livePreviewBase.height = canvas.height;
+  const baseContext = livePreviewBase.getContext('2d');
+  if (baseContext) baseContext.drawImage(canvas, 0, 0);
+}
+function scheduleLivePreview(): void {
+  if (livePreviewFrame) return;
+  livePreviewFrame = requestAnimationFrame(() => {
+    livePreviewFrame = 0;
+    if (!livePreviewBase) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(livePreviewBase, 0, 0);
+    if (activeStroke) paintItem(activeStroke);
+    if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
+  });
+}
 function scheduleRedraw(updatePanels = false): void {
   pendingPanelRefresh ||= updatePanels;
   if (redrawFrame) return;
@@ -586,8 +606,8 @@ canvas.addEventListener('pointerdown', event => {
     if (text?.trim()) commitItem({ ...makeMeta(), kind: 'text', at: p, text: text.trim(), color: colorInput.value, size: Math.max(16, Number(sizeInput.value) * 6) });
     return;
   }
-  if (tool === 'pen' || tool === 'eraser') activeStroke = { ...makeMeta(), kind: 'stroke', points: [p], color: colorInput.value, width: Number(sizeInput.value), erase: tool === 'eraser' };
-  else { shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value), fill: false }; }
+  if (tool === 'pen' || tool === 'eraser') { captureLivePreviewBase(); activeStroke = { ...makeMeta(), kind: 'stroke', points: [p], color: colorInput.value, width: Number(sizeInput.value), erase: tool === 'eraser' }; scheduleLivePreview(); }
+  else { captureLivePreviewBase(); shapeStart = p; previewShape = { ...makeMeta(), kind: 'shape', shape: tool, from: p, to: p, color: colorInput.value, width: Number(sizeInput.value), fill: false }; scheduleLivePreview(); }
 });
 canvas.addEventListener('pointermove', event => {
   const rect = canvas.getBoundingClientRect();
@@ -625,13 +645,15 @@ canvas.addEventListener('pointermove', event => {
       const last = activeStroke.points[activeStroke.points.length - 1];
       if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.65) activeStroke.points.push(point);
     }
-    scheduleRedraw(false);
-  } else if (shapeStart && previewShape) { previewShape.to = p; scheduleRedraw(false); }
+    scheduleLivePreview();
+  } else if (shapeStart && previewShape) { previewShape.to = p; scheduleLivePreview(); }
 });
-function finishPointer(): void {
+function finishPointer(event?: PointerEvent): void {
   if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) { lassoPoints=[]; selectedId=null; redraw(); showToast('Recorrido demasiado corto; dibuja un lazo más amplio'); } else if (tool === 'object-lasso') { const polygon=lassoPoints.map(point=>({...point})); const foundItems=items.filter(item=>item.visible&&lassoIntersectsBounds(polygon,bounds(item)));const found=foundItems[foundItems.length-1]??null;objectLassoSelectedIds=new Set(foundItems.map(item=>item.id));selectedId=found?.id??null;lassoPoints=[];activeLassoId=null;lassoDrawing=false;redraw();showToast(foundItems.length>1?foundItems.length+' objetos seleccionados; puedes moverlos juntos o eliminarlos':found?'Objeto seleccionado: '+layerName(found):'No se encontró ningún objeto dentro del lazo'); } else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);hiddenLassoIds.delete(selection.id);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); snapshot(); redraw(); showToast('Lazo de área creado. Puedes moverlo o copiarlo desde sus controles.'); } }
-  if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
-  if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
+  if (event && activeStroke) { const finalPoint = pointFromEvent(event); const last = activeStroke.points[activeStroke.points.length - 1]; if (!last || Math.hypot(finalPoint.x-last.x,finalPoint.y-last.y)>0.05) activeStroke.points.push(finalPoint); }
+  if (activeStroke) { const finished = activeStroke; activeStroke = null; livePreviewBase = null; commitItem(finished); }
+  if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; livePreviewBase = null; commitItem(finished); }
+  if (livePreviewFrame) { cancelAnimationFrame(livePreviewFrame); livePreviewFrame = 0; }
   if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); snapshot(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
   dragStart = null; dragOrigin = null; groupDragOrigins=null; lassoDragOrigin=null; hasMoved = false; resizing = false; resizeHandle = null;
