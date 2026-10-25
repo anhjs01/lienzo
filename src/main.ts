@@ -189,9 +189,9 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
   const scale = photoPreviewScale;
   const width=Math.max(1,Math.round(item.width*scale)),height=Math.max(1,Math.round(item.height*scale));
   const activeMask=lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]);
-  const maskKey:string[]=[];
-  for(const point of activeMask)maskKey.push(Math.round(point.x*10)/10+','+Math.round(point.y*10)/10);
-  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,activeLassoId,maskKey]);
+  let maskHash=2166136261;
+  for(const point of activeMask){maskHash=Math.imul(maskHash^Math.round(point.x*10),16777619);maskHash=Math.imul(maskHash^Math.round(point.y*10),16777619);}
+  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,activeLassoId,activeMask.length,maskHash>>>0]);
   const cached=processedImageCache.get(item);
   if(cached&&cached.image===item.image&&cached.key===key)return cached.canvas;
   const off=document.createElement('canvas');off.width=width;off.height=height;
@@ -454,11 +454,14 @@ function layerName(item: Item): string {
   return item.kind === 'text' ? item.text.slice(0, 20) || 'Texto' : item.kind === 'shape' ? ({ line: 'Línea', rect: 'Rectángulo', ellipse: 'Elipse' }[item.shape]) : item.kind === 'image' ? 'Imagen importada' : item.erase ? 'Borrado' : 'Trazo';
 }
 function bounds(item: Item): { x: number; y: number; w: number; h: number } {
-  if (item.kind === 'text') { ctx.save(); ctx.font = `600 ${item.size}px sans-serif`; const w = Math.max(30, ...item.text.split('\n').map(line => ctx.measureText(line).width)); ctx.restore(); return { x: item.at.x, y: item.at.y, w, h: item.size * 1.3 * item.text.split('\n').length }; }
+  if (item.kind === 'text') { ctx.save(); ctx.font = `600 ${item.size}px sans-serif`; let w=30; for(const line of item.text.split('\n'))w=Math.max(w,ctx.measureText(line).width); ctx.restore(); return { x: item.at.x, y: item.at.y, w, h: item.size * 1.3 * item.text.split('\n').length }; }
   if (item.kind === 'image') return { x: item.x, y: item.y, w: item.width, h: item.height };
   if (item.kind === 'shape') return { x: Math.min(item.from.x, item.to.x), y: Math.min(item.from.y, item.to.y), w: Math.max(1, Math.abs(item.to.x-item.from.x)), h: Math.max(1, Math.abs(item.to.y-item.from.y)) };
-  const xs = item.points.map(p => p.x), ys = item.points.map(p => p.y), pad = Math.max(8, item.width);
-  return { x: Math.min(...xs)-pad, y: Math.min(...ys)-pad, w: Math.max(1,Math.max(...xs)-Math.min(...xs)+pad*2), h: Math.max(1,Math.max(...ys)-Math.min(...ys)+pad*2) };
+  if(!item.points.length)return{x:0,y:0,w:1,h:1};
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const point of item.points){if(point.x<minX)minX=point.x;if(point.x>maxX)maxX=point.x;if(point.y<minY)minY=point.y;if(point.y>maxY)maxY=point.y;}
+  const pad=Math.max(8,item.width);
+  return{x:minX-pad,y:minY-pad,w:Math.max(1,maxX-minX+pad*2),h:Math.max(1,maxY-minY+pad*2)};
 }
 function drawSelection(item: Item): void {
   const b = bounds(item); ctx.save(); ctx.strokeStyle = '#8065ed'; ctx.lineWidth = 2; ctx.setLineDash([7,4]); ctx.strokeRect(b.x-5,b.y-5,b.w+10,b.h+10); ctx.setLineDash([]); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#8065ed';
