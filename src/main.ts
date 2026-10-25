@@ -81,7 +81,7 @@ app.innerHTML = `
           <div class="layer-row selected"><span class="layer-thumb">▧</span><span class="layer-name">Fondo del lienzo</span><span class="layer-eye">◉</span></div>
           <div id="layers-list"></div>
           <div id="photo-sidebar-nav" class="photo-quick-nav photo-sidebar-nav" aria-label="Herramientas de edición fotográfica" hidden><button type="button" data-photo-jump="LUZ">☼ Luz</button><button type="button" data-photo-jump="COLOR">◉ Color</button><button type="button" data-photo-jump="MEZCLA DE COLORES">◌ Mezclador</button><button type="button" data-photo-jump="EFECTOS">✧ Efectos</button></div>
-          <div id="lasso-layer-panel" class="lasso-layer-panel" hidden><div class="lasso-panel-heading"><span>Selecciones de lazo</span><button type="button" id="lasso-clear" title="Quitar selección activa">Quitar</button></div><div id="lasso-layer-list"></div><div class="lasso-layer-actions"><button type="button" id="lasso-move" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-duplicate">＋ Copiar lazo</button></div></div>
+          <div id="lasso-layer-panel" class="lasso-layer-panel" hidden><div class="lasso-panel-heading"><span>Selecciones de lazo</span><button type="button" id="lasso-clear" title="Quitar selección activa">Quitar</button></div><p class="lasso-panel-note">Cada lazo es una selección independiente. Activa uno para moverlo o crear una copia sin mover la imagen.</p><div id="lasso-layer-list"></div><div class="lasso-layer-actions"><button type="button" id="lasso-move" aria-pressed="false">↔ Mover lazo</button><button type="button" id="lasso-duplicate">＋ Copiar lazo</button></div></div>
           <div id="layer-properties" class="layer-properties" hidden>
             <label class="field-label" for="layer-name-input">Nombre de capa</label>
             <input class="text-field" id="layer-name-input" maxlength="60" value="" />
@@ -392,7 +392,7 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
-  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; redraw(); return; }
+  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
