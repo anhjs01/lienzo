@@ -366,8 +366,16 @@ canvas.addEventListener('pointermove', event => {
     }
   } else if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
-    if (selected) { const b = bounds(selected); canvas.style.cursor = Math.abs(p.x-(b.x+b.w)) <= 12 && Math.abs(p.y-(b.y+b.h)) <= 12 ? 'nwse-resize' : hitTest(p) ? 'move' : 'default'; }
-    else canvas.style.cursor = 'default';
+    if (selected) {
+      const b = bounds(selected);
+      const nearWest = Math.abs(p.x - (b.x - 5)) <= 10;
+      const nearEast = Math.abs(p.x - (b.x + b.w + 5)) <= 10;
+      const nearNorth = Math.abs(p.y - (b.y - 5)) <= 10;
+      const nearSouth = Math.abs(p.y - (b.y + b.h + 5)) <= 10;
+      if ((nearWest || nearEast) && (nearNorth || nearSouth)) {
+        canvas.style.cursor = (nearWest === nearNorth) ? 'nwse-resize' : 'nesw-resize';
+      } else canvas.style.cursor = hitTest(p) ? 'move' : 'default';
+    } else canvas.style.cursor = 'default';
   } else if (activeStroke) { activeStroke.points.push(p); redraw(); }
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
