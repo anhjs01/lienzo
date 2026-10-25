@@ -244,6 +244,39 @@ function syncActiveLasso(): void { const active=lassoSelections.find(selection=>
 function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
 function hideAppliedLasso(message:string): void { if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
+function commitPhotoAdjustments(item:ImageItem,message:string): void {
+  const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
+  const full=document.createElement('canvas');full.width=canvas.width;full.height=canvas.height;
+  const fullContext=full.getContext('2d');
+  if(!fullContext){showToast('No se pudo aplicar el ajuste');return;}
+  const previousOpacity=item.opacity;item.opacity=1;
+  try { paintItem(item,fullContext); } catch(error) { item.opacity=previousOpacity; console.error('No se pudo procesar el ajuste local:',error);showToast('No se pudo aplicar el ajuste');return; }
+  item.opacity=previousOpacity;
+  const cropped=document.createElement('canvas');cropped.width=width;cropped.height=height;
+  const cropContext=cropped.getContext('2d');
+  if(!cropContext){showToast('No se pudo preparar la imagen ajustada');return;}
+  cropContext.drawImage(full,item.x,item.y,item.width,item.height,0,0,width,height);
+  let dataUrl:string;
+  try { dataUrl=cropped.toDataURL('image/png'); } catch(error) { console.error('No se pudo exportar el ajuste:',error);showToast('No se pudo guardar el resultado del ajuste');return; }
+  const baked=new Image();
+  baked.onload=()=>{
+    item.image=baked;
+    item.filter='none';
+    item.exposure=0;item.contrastAmount=0;item.saturationAmount=0;item.warmth=0;
+    item.highlights=0;item.shadows=0;item.whites=0;item.blacks=0;
+    item.vibrance=0;item.tint=0;item.vignette=0;item.grain=0;
+    item.hslMix={};
+    item.maskPoints=undefined;
+    document.querySelector<HTMLSelectElement>('#image-filter')!.value='none';
+    document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input=>{input.value='0';const output=input.closest('label')?.querySelector('output');if(output)output.textContent='0';});
+    document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input=>{input.value='0';const output=document.querySelector<HTMLOutputElement>('#hsl-'+input.dataset.hslColor+'-'+input.dataset.hslAxis);if(output)output.value='0';});
+    snapshot();
+    hideAppliedLasso(message);
+    renderLayerProperties();
+  };
+  baked.onerror=()=>{showToast('No se pudo finalizar el ajuste; tus controles se conservaron');};
+  baked.src=dataUrl;
+}
 function renderLassoLayers(): void {
  const panel=document.querySelector<HTMLDivElement>('#lasso-layer-panel');const list=document.querySelector<HTMLDivElement>('#lasso-layer-list');const actions=document.querySelector<HTMLDivElement>('#lasso-actions');
  if(panel)panel.hidden=lassoSelections.length===0;if(actions)actions.hidden=lassoSelections.length===0;if(!list)return;list.innerHTML='';
@@ -492,7 +525,7 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
 });
 document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
   input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; const dot=document.querySelector<HTMLElement>('[data-hsl-preview="'+color+'"]');if(dot){const hueBase:Record<HslColor,number>={red:0,orange:30,yellow:60,green:120,aqua:180,blue:220,purple:270,magenta:320};const hue=(hueBase[color]+(item.hslMix?.[color]?.h??0)*1.8+360)%360;const mix=item.hslMix?.[color]??{h:0,s:0,l:0};dot.style.backgroundColor='hsl('+hue+' '+Math.max(0,Math.min(100,50+mix.s*.5))+'% '+Math.max(5,Math.min(95,50+mix.l*.35))+'%)';} redraw(); });
-  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p}));snapshot();hideAppliedLasso('Mezcla HSL aplicada; contorno oculto');}});
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image')commitPhotoAdjustments(item,'Mezcla HSL aplicada; contorno oculto');});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
   input.addEventListener('input', () => {
@@ -502,13 +535,13 @@ document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input
     item[key] = Number(input.value);
     redraw();
   });
-  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') { if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); hideAppliedLasso('Ajuste aplicado; contorno oculto'); } });
+  input.addEventListener('change', () => { const item = items.find(candidate => candidate.id === selectedId); if (item?.kind === 'image') commitPhotoAdjustments(item,'Ajuste aplicado; contorno oculto'); });
 });
 document.querySelector<HTMLSelectElement>('#image-filter')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId);
   if (!item || item.kind !== 'image') return;
   item.filter = (event.currentTarget as HTMLSelectElement).value as ImageFilter;
-  if(lassoPoints.length>=3)item.maskPoints=lassoPoints.map(p=>({...p})); snapshot(); hideAppliedLasso('Filtro aplicado; contorno oculto');
+  commitPhotoAdjustments(item,'Filtro aplicado; contorno oculto');
 });
 canvas.addEventListener('dblclick', event => {
   const item = hitTest(pointFromEvent(event));
