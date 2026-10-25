@@ -44,6 +44,11 @@ app.innerHTML = `
           <button class="tool-button" data-tool="rect" title="Rectángulo (R)" aria-label="Rectángulo"><span class="tool-glyph">▱</span><small>Forma</small></button>
           <button class="tool-button" data-tool="ellipse" title="Elipse (O)" aria-label="Elipse"><span class="tool-glyph">◯</span><small>Elipse</small></button>
           <button class="tool-button" data-tool="text" title="Texto (T)" aria-label="Texto"><span class="tool-glyph">T</span><small>Texto</small></button>
+          <span class="rail-rule"></span>
+          <button class="photo-tool-button" type="button" data-photo-jump="LUZ" title="Ajustes de luz"><span>☼</span><small>Luz</small></button>
+          <button class="photo-tool-button" type="button" data-photo-jump="COLOR" title="Ajustes de color"><span>◉</span><small>Color</small></button>
+          <button class="photo-tool-button" type="button" data-photo-jump="MEZCLA DE COLORES" title="Mezcla de colores HSL"><span>◌</span><small>Mezcla</small></button>
+          <button class="photo-tool-button" type="button" data-photo-jump="EFECTOS" title="Efectos fotográficos"><span>✧</span><small>Efectos</small></button>
         </div>
         <div class="rail-bottom"><span class="avatar">✦</span><small>CREA</small></div>
       </aside>
@@ -110,7 +115,7 @@ app.innerHTML = `
 const hslHost = document.querySelector<HTMLDivElement>('#hsl-mix-controls');
 if (hslHost) hslHost.innerHTML = hslColors.map(color => '<details class="hsl-color" data-hsl-family="' + color.key + '"><summary><span data-hsl-preview="' + color.key + '" class="hsl-dot hsl-' + color.key + '"></span>' + color.label + '</summary>' + (['h','s','l'] as const).map((axis,i) => '<label>' + ['Tono','Saturación','Luminancia'][i] + ' <output id="hsl-' + color.key + '-' + axis + '">0</output><input data-hsl-color="' + color.key + '" data-hsl-axis="' + axis + '" type="range" min="-100" max="100" value="0" /></label>').join('') + '</details>').join('');
 
-document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.photoJump??'';const target=Array.from(document.querySelectorAll<HTMLElement>('.photo-section-title')).find(el=>el.textContent?.includes(key));if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('photo-section-focus');window.setTimeout(()=>target.classList.remove('photo-section-focus'),900);}document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(b=>b.classList.toggle('active',b===button));}));
+document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.photoJump??'';const imageItem=items.find(item=>item.id===selectedId&&item.kind==='image') as ImageItem|undefined;if(!imageItem){showToast('Selecciona primero una capa de imagen para editar '+key.toLowerCase());return;}activePhotoSection=key;if(activeLassoId){hiddenLassoIds.delete(activeLassoId);const active=lassoSelections.find(selection=>selection.id===activeLassoId);if(active)lassoPoints=active.points.map(p=>({...p}));}const target=Array.from(document.querySelectorAll<HTMLElement>('.photo-section-title')).find(el=>el.textContent?.includes(key));if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('photo-section-focus');window.setTimeout(()=>target.classList.remove('photo-section-focus'),900);}document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(b=>b.classList.toggle('active',b===button));redraw();}));
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!;
 const ctx = canvas.getContext('2d')!;
 const hint = document.querySelector<HTMLDivElement>('#paper-hint')!;
@@ -127,6 +132,7 @@ let hiddenLassoIds = new Set<string>();
 let lassoMoveMode = false;
 let lassoDragOrigin: Point[] | null = null;
 let lassoDrawing = false;
+let activePhotoSection: string | null = null;
 let photoCommitVersion = 0;
 let projectRestoreVersion = 0;
 let tool: Tool = 'select';
@@ -232,7 +238,8 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
-  const allLassos = (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id));
+  const showLassoOverlay = tool === 'lasso' || lassoMoveMode || activePhotoSection !== null;
+  const allLassos = showLassoOverlay ? (lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : [])).filter(selection=>!hiddenLassoIds.has(selection.id)) : [];
   allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
   if(lassoDrawing&&lassoPoints.length>1){ctx.save();ctx.beginPath();ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y);lassoPoints.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle='#a18bff';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.stroke();ctx.restore();}
   renderLassoLayers();
@@ -434,7 +441,7 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
-  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
+  if (tool === 'lasso') { activePhotoSection=null; hiddenLassoIds.clear(); lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; lassoMoveMode = false; redraw(); return; }
   if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
@@ -488,7 +495,9 @@ function finishPointer(): void {
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
 
-document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => setTool(el.dataset.tool as Tool)));
+function hideLassoOverlay(): void { activePhotoSection=null; lassoMoveMode=false; lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw(); }
+document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => { const next=el.dataset.tool as Tool; if(next!=='lasso')hideLassoOverlay(); else activePhotoSection=null; setTool(next); }));
+document.addEventListener('pointerdown',event=>{const target=event.target;if(!(target instanceof Element)||target===canvas||canvas.contains(target))return;if(target.closest('[data-photo-jump],.photo-adjustments,.hsl-color,.image-filter-control,.lasso-layer-panel,.lasso-actions'))return;hideLassoOverlay();});
 function toggleLassoMove(): void { if(!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}lassoMoveMode=!lassoMoveMode;setTool('select');renderLassoLayers();showToast(lassoMoveMode?'Modo mover lazo activado: arrastra dentro del contorno':'Modo mover lazo desactivado'); }
 document.querySelector('#lasso-move')!.addEventListener('click',toggleLassoMove);
 document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoMove);
