@@ -373,7 +373,8 @@ function deleteSelected(): void { const index = items.findIndex(item => item.id 
 canvas.addEventListener('pointerdown', event => {
   canvas.setPointerCapture(event.pointerId);
   const p = pointFromEvent(event);
-  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; redraw(); return; }
+  if (tool === 'lasso') { lassoPoints = [p]; lassoDrawing = true; activeLassoId = null; redraw(); return; }
+  if (tool === 'select' && lassoMoveMode && activeLassoId && lassoPoints.length >= 3 && pointInLasso(p.x,p.y)) { dragStart=p;lassoDragOrigin=lassoPoints.map(point=>({...point}));hasMoved=false;selectedId=null;redraw();return; }
   if (tool === 'select') {
     const selected = items.find(item => item.id === selectedId && item.visible);
     if (selected) {
@@ -395,6 +396,7 @@ canvas.addEventListener('pointerdown', event => {
 canvas.addEventListener('pointermove', event => {
   const p = pointFromEvent(event);
   if (tool === 'lasso' && lassoDrawing) { const last = lassoPoints[lassoPoints.length - 1]; if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) lassoPoints.push(p); redraw(); }
+  else if (tool === 'select' && dragStart && lassoDragOrigin && lassoMoveMode) { const dx=p.x-dragStart.x,dy=p.y-dragStart.y;if(Math.abs(dx)+Math.abs(dy)>1)hasMoved=true;lassoPoints=lassoDragOrigin.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+dx)),y:Math.max(0,Math.min(canvas.height,point.y+dy))}));syncActiveLasso();redraw(); }
   else if (tool === 'select' && dragStart && selectedId) {
     const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
     const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
@@ -415,16 +417,26 @@ canvas.addEventListener('pointermove', event => {
   else if (shapeStart && previewShape) { previewShape.to = p; redraw(); }
 });
 function finishPointer(): void {
-  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; redraw(); if (lassoPoints.length >= 3) showToast('Área de lazo seleccionada. El contorno permanecerá visible.'); }
+  if (lassoDrawing) { lassoDrawing = false; if (lassoPoints.length < 3) lassoPoints = []; else { const selection={id:crypto.randomUUID(),name:'Lazo '+String(lassoSelections.length+1).padStart(2,'0'),points:lassoPoints.map(point=>({...point}))};lassoSelections.push(selection);activeLassoId=selection.id;lassoPoints=selection.points.map(point=>({...point})); } redraw(); if (lassoPoints.length >= 3) showToast('Lazo creado. Puedes moverlo o copiarlo desde sus controles.'); }
   if (activeStroke) { const finished = activeStroke; activeStroke = null; commitItem(finished); }
   if (shapeStart && previewShape) { const finished = previewShape; shapeStart = null; previewShape = null; commitItem(finished); }
+  if (dragStart && lassoDragOrigin && hasMoved) { syncActiveLasso(); }
   if (dragStart && selectedId && hasMoved) { snapshot(); redraw(); }
-  dragStart = null; dragOrigin = null; hasMoved = false; resizing = false;
+  dragStart = null; dragOrigin = null; lassoDragOrigin=null; hasMoved = false; resizing = false;
 }
 canvas.addEventListener('pointerup', finishPointer);
 canvas.addEventListener('pointercancel', finishPointer);
 
 document.querySelectorAll<HTMLElement>('[data-tool]').forEach(el => el.addEventListener('click', () => setTool(el.dataset.tool as Tool)));
+function toggleLassoMove(): void { if(!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}lassoMoveMode=!lassoMoveMode;setTool('select');renderLassoLayers();showToast(lassoMoveMode?'Modo mover lazo activado: arrastra dentro del contorno':'Modo mover lazo desactivado'); }
+document.querySelector('#lasso-move')!.addEventListener('click',toggleLassoMove);
+document.querySelector('#lasso-move-top')!.addEventListener('click',toggleLassoMove);
+function duplicateLasso(): void { if(lassoPoints.length<3||!activeLassoId){showToast('Dibuja o selecciona un lazo primero');return;}const offset=24;const points=lassoPoints.map(point=>({x:Math.max(0,Math.min(canvas.width,point.x+offset)),y:Math.max(0,Math.min(canvas.height,point.y+offset))}));const copy={id:crypto.randomUUID(),name:'Lazo copia '+String(lassoSelections.length+1).padStart(2,'0'),points};lassoSelections.push(copy);activeLassoId=copy.id;lassoPoints=points.map(point=>({...point}));lassoMoveMode=true;setTool('select');redraw();showToast('Copia de la selección creada');}
+document.querySelector('#lasso-duplicate')!.addEventListener('click',duplicateLasso);
+document.querySelector('#lasso-copy-top')!.addEventListener('click',duplicateLasso);
+function removeActiveLasso(): void { if(!activeLassoId){clearLassoSelections();return;}lassoSelections=lassoSelections.filter(selection=>selection.id!==activeLassoId);const next=lassoSelections[lassoSelections.length-1];if(next){activeLassoId=next.id;lassoPoints=next.points.map(point=>({...point}));}else{activeLassoId=null;lassoPoints=[];}lassoMoveMode=false;redraw();showToast('Selección quitada');}
+document.querySelector('#lasso-clear')!.addEventListener('click',removeActiveLasso);
+document.querySelector('#lasso-hide-top')!.addEventListener('click',()=>clearLassoSelections('Contornos de lazo ocultos'));
 document.querySelector('#undo')!.addEventListener('click', undo);
 document.querySelector<HTMLInputElement>('#layer-name-input')!.addEventListener('change', event => {
   const item = items.find(candidate => candidate.id === selectedId); if (!item) return;
