@@ -286,8 +286,8 @@ function commitPhotoAdjustments(item:ImageItem,message:string): void {
     const filter=document.querySelector<HTMLSelectElement>('#image-filter');if(filter)filter.value='none';
     document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input=>{input.value='0';const output=input.closest('label')?.querySelector('output');if(output)output.textContent='0';});
     document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input=>{input.value='0';const output=document.querySelector<HTMLOutputElement>('#hsl-'+input.dataset.hslColor+'-'+input.dataset.hslAxis);if(output)output.value='0';});
-    snapshot();
     hideAppliedLasso(message);
+    snapshot();
     renderLayerProperties();
     redraw();
   };
