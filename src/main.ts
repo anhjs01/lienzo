@@ -340,7 +340,7 @@ function commitAreaAdjustmentsToImages(source:ImageItem,message:string,polygon:P
     tint:source.tint,vignette:source.vignette,grain:source.grain,
     hslMix:source.hslMix?Object.fromEntries(Object.entries(source.hslMix).map(([key,value])=>[key,value?{...value}:value])) as ImageItem['hslMix']:{}
   };
-  const sourceId=source.id,selectedAtStart=selectedId,activeAtStart=activeLassoId;
+  const selectedAtStart=selectedId,activeAtStart=activeLassoId;
   const commitVersion=++photoCommitVersion;
   const lassoAtStart=polygon.map(point=>({...point}));
   const prepared=targets.map(target=>{
