@@ -330,9 +330,61 @@ function syncActiveLasso(): void { const active=lassoSelections.find(selection=>
 function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];hiddenLassoIds.clear();activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;snapshot();const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
 function hideAppliedLasso(message:string): void { lassoSelections.forEach(selection=>hiddenLassoIds.add(selection.id)); if(activeLassoId)hiddenLassoIds.add(activeLassoId); lassoPoints=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message+'; el lazo queda guardado en Selecciones'); }
 function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;hiddenLassoIds.delete(id);activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
+function commitAreaAdjustmentsToImages(source:ImageItem,message:string,polygon:Point[]): void {
+  const targets=items.filter((candidate):candidate is ImageItem=>candidate.kind==='image'&&candidate.visible);
+  if(!targets.length){showToast('No hay capas de imagen visibles dentro del área');return;}
+  const sourceSettings={
+    filter:source.filter,exposure:source.exposure,contrastAmount:source.contrastAmount,
+    saturationAmount:source.saturationAmount,warmth:source.warmth,highlights:source.highlights,
+    shadows:source.shadows,whites:source.whites,blacks:source.blacks,vibrance:source.vibrance,
+    tint:source.tint,vignette:source.vignette,grain:source.grain,
+    hslMix:source.hslMix?Object.fromEntries(Object.entries(source.hslMix).map(([key,value])=>[key,value?{...value}:value])) as ImageItem['hslMix']:{}
+  };
+  const sourceId=source.id,selectedAtStart=selectedId,activeAtStart=activeLassoId;
+  const commitVersion=++photoCommitVersion;
+  const lassoAtStart=polygon.map(point=>({...point}));
+  const prepared=targets.map(target=>{
+    const width=Math.max(1,Math.ceil(target.width)),height=Math.max(1,Math.ceil(target.height));
+    const local=document.createElement('canvas');local.width=width;local.height=height;
+    const localContext=local.getContext('2d');
+    if(!localContext)throw new Error('No se pudo preparar una capa para el ajuste');
+    const savedSettings={filter:target.filter,exposure:target.exposure,contrastAmount:target.contrastAmount,saturationAmount:target.saturationAmount,warmth:target.warmth,highlights:target.highlights,shadows:target.shadows,whites:target.whites,blacks:target.blacks,vibrance:target.vibrance,tint:target.tint,vignette:target.vignette,grain:target.grain,hslMix:target.hslMix};
+    Object.assign(target,sourceSettings);
+    try { localContext.translate(-target.x,-target.y);paintItem(target,localContext); }
+    finally { Object.assign(target,savedSettings); }
+    const composite=document.createElement('canvas');composite.width=width;composite.height=height;
+    const compositeContext=composite.getContext('2d');
+    if(!compositeContext)throw new Error('No se pudo preparar la máscara de una capa');
+    compositeContext.drawImage(target.image,0,0,width,height);
+    compositeContext.save();compositeContext.beginPath();
+    compositeContext.moveTo(lassoAtStart[0]!.x-target.x,lassoAtStart[0]!.y-target.y);
+    lassoAtStart.slice(1).forEach(point=>compositeContext.lineTo(point.x-target.x,point.y-target.y));
+    compositeContext.closePath();compositeContext.clip();compositeContext.drawImage(local,0,0,width,height);compositeContext.restore();
+    return {target,dataUrl:composite.toDataURL('image/png')};
+  });
+  Promise.all(prepared.map(({target,dataUrl})=>new Promise<{target:ImageItem;image:HTMLImageElement}>((resolve,reject)=>{
+    const baked=new Image();baked.onload=()=>resolve({target,image:baked});baked.onerror=()=>reject(new Error('No se pudo finalizar una capa ajustada'));baked.src=dataUrl;
+  }))).then(results=>{
+    const currentLassoMatches=activeLassoId===activeAtStart&&lassoPoints.length===lassoAtStart.length&&lassoPoints.every((point,index)=>point.x===lassoAtStart[index]!.x&&point.y===lassoAtStart[index]!.y);
+    if(commitVersion!==photoCommitVersion||!items.includes(source)||selectedId!==selectedAtStart||!currentLassoMatches){showToast('El ajuste no se aplicó porque cambió la capa o la selección; vuelve a aplicarlo');return;}
+    for(const {target,image} of results){
+      target.image=image;target.filter='none';target.exposure=0;target.contrastAmount=0;target.saturationAmount=0;target.warmth=0;
+      target.highlights=0;target.shadows=0;target.whites=0;target.blacks=0;target.vibrance=0;target.tint=0;target.vignette=0;target.grain=0;target.hslMix={};target.maskPoints=undefined;
+    }
+    const filter=document.querySelector<HTMLSelectElement>('#image-filter');if(filter)filter.value='none';
+    document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input=>{input.value='0';const output=input.closest('label')?.querySelector('output');if(output)output.textContent='0';});
+    document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input=>{input.value='0';const output=document.querySelector<HTMLOutputElement>('#hsl-'+input.dataset.hslColor+'-'+input.dataset.hslAxis);if(output)output.value='0';});
+    hideAppliedLasso(message+' en todas las capas de imagen visibles');snapshot();renderLayerProperties();redraw();
+  }).catch(error=>{console.error('No se pudo aplicar el ajuste al área:',error);showToast('No se pudo aplicar el ajuste a todas las capas; no se guardaron cambios');});
+}
 function commitPhotoAdjustments(item:ImageItem,message:string): void {
   photoPreviewScale = 1;
   if(!item.visible){showToast('Activa la capa de imagen antes de aplicar ajustes');return;}
+  if(activeLassoId&&lassoPoints.length>=3){
+    try { commitAreaAdjustmentsToImages(item,message,lassoPoints); }
+    catch(error) { console.error('No se pudo preparar el ajuste de área:',error);showToast('No se pudo preparar el ajuste para las capas'); }
+    return;
+  }
   const commitVersion=++photoCommitVersion;
   const width=Math.max(1,Math.ceil(item.width)),height=Math.max(1,Math.ceil(item.height));
   const local=document.createElement('canvas');local.width=width;local.height=height;
