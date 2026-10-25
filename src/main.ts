@@ -297,8 +297,52 @@ function resizeBoundsFromHandle(original: Item, handle: ResizeHandle, p: Point):
   const bottom = handle.startsWith('s') ? Math.max(p.y, b.y + minSize) : b.y + b.h;
   return { x: left, y: top, w: Math.max(minSize, right - left), h: Math.max(minSize, bottom - top) };
 }
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+function itemContainsPoint(item: Item, p: Point): boolean {
+  const tolerance = 7;
+  const b = bounds(item);
+  if (item.kind === 'image' || item.kind === 'text') {
+    return p.x >= b.x - tolerance && p.x <= b.x + b.w + tolerance &&
+      p.y >= b.y - tolerance && p.y <= b.y + b.h + tolerance;
+  }
+  if (item.kind === 'stroke') {
+    const radius = tolerance + item.width / 2;
+    if (item.points.length === 1) return Math.hypot(p.x - item.points[0]!.x, p.y - item.points[0]!.y) <= radius;
+    for (let i = 1; i < item.points.length; i++) {
+      if (distanceToSegment(p, item.points[i - 1]!, item.points[i]!) <= radius) return true;
+    }
+    return false;
+  }
+  const left = Math.min(item.from.x, item.to.x), right = Math.max(item.from.x, item.to.x);
+  const top = Math.min(item.from.y, item.to.y), bottom = Math.max(item.from.y, item.to.y);
+  const inside = p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
+  if (item.shape === 'line') return distanceToSegment(p, item.from, item.to) <= tolerance + item.width / 2;
+  if (item.shape === 'rect') {
+    if (item.fill && inside) return true;
+    const nearHorizontal = p.x >= left - tolerance && p.x <= right + tolerance &&
+      (Math.abs(p.y - top) <= tolerance + item.width / 2 || Math.abs(p.y - bottom) <= tolerance + item.width / 2);
+    const nearVertical = p.y >= top - tolerance && p.y <= bottom + tolerance &&
+      (Math.abs(p.x - left) <= tolerance + item.width / 2 || Math.abs(p.x - right) <= tolerance + item.width / 2);
+    return nearHorizontal || nearVertical;
+  }
+  const rx = Math.max(1, (right - left) / 2), ry = Math.max(1, (bottom - top) / 2);
+  const nx = (p.x - (left + right) / 2) / rx, ny = (p.y - (top + bottom) / 2) / ry;
+  const normalizedDistance = nx * nx + ny * ny;
+  if (item.fill && inside && normalizedDistance <= 1) return true;
+  const edgeTolerance = tolerance / Math.max(1, Math.min(rx, ry)) + item.width / Math.max(1, Math.min(rx, ry));
+  return Math.abs(normalizedDistance - 1) <= edgeTolerance && p.x >= left - tolerance && p.x <= right + tolerance && p.y >= top - tolerance && p.y <= bottom + tolerance;
+}
 function hitTest(p: Point): Item | null {
-  for (let i = items.length - 1; i >= 0; i--) { const item = items[i]!; if (!item.visible) continue; const b = bounds(item); if (p.x >= b.x-8 && p.x <= b.x+b.w+8 && p.y >= b.y-8 && p.y <= b.y+b.h+8) return item; }
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.visible && itemContainsPoint(item, p)) return item;
+  }
   return null;
 }
 function reorderSelected(direction: -1 | 1): void {
