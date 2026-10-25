@@ -29,7 +29,9 @@ app.innerHTML = `
         <button class="button button-quiet" id="new-project-btn" title="Crear un documento nuevo">Nuevo</button>
         <button class="button button-quiet" id="import-btn"><span>＋</span> Importar</button>
         <button class="button button-quiet" id="save-project-btn" title="Guardar proyecto editable en este navegador"><span>↓</span> Guardar</button>
+        <button class="button button-quiet" id="download-project-btn" title="Descargar una copia editable del proyecto">Descargar .lienzo</button>
         <button class="button button-quiet" id="restore-project-btn" title="Recuperar el último proyecto guardado">Abrir guardado</button>
+        <button class="button button-quiet" id="open-project-file-btn" title="Abrir un archivo .lienzo">Abrir archivo</button>
         <button class="button button-primary" id="export-btn"><span>↗</span> Exportar</button>
       </div>
     </header>
@@ -108,6 +110,7 @@ app.innerHTML = `
       </aside>
     </main>
     <input type="file" id="file-input" accept="image/*" hidden />
+    <input type="file" id="project-file-input" accept=".lienzo,.json,application/json" hidden />
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="mobile-bottom"><button data-tool="select" class="mobile-tool active">↖<span>Elegir</span></button><button data-tool="pen" class="mobile-tool">✎<span>Pincel</span></button><button data-tool="eraser" class="mobile-tool">⌫<span>Borrar</span></button><button data-tool="text" class="mobile-tool">T<span>Texto</span></button><button id="mobile-more" class="mobile-tool">•••<span>Más</span></button></div>
   </div>
@@ -673,39 +676,42 @@ document.querySelector<HTMLInputElement>('#project-name')!.addEventListener('inp
 });
 
 const PROJECT_STORAGE_KEY = 'lienzo-studio-project-v1';
-function saveProject(): void {
+function buildProjectPayload(): Record<string, unknown> {
+  const savedItems = items.map(item => {
+    if (item.kind !== 'image') return cloneItem(item);
+    const { image, ...rest } = item;
+    // A data URL is already portable; avoid allocating another canvas for it.
+    const imageData = image.src.startsWith('data:image/')
+      ? image.src
+      : (() => {
+          const imageCanvas = document.createElement('canvas');
+          imageCanvas.width = image.naturalWidth || image.width;
+          imageCanvas.height = image.naturalHeight || image.height;
+          if (!imageCanvas.width || !imageCanvas.height) throw new Error('Imagen sin dimensiones válidas');
+          const imageContext = imageCanvas.getContext('2d');
+          if (!imageContext) throw new Error('No se pudo preparar una imagen');
+          imageContext.drawImage(image, 0, 0);
+          return imageCanvas.toDataURL('image/png');
+        })();
+    return { ...rest, imageData };
+  });
+  return {
+    version: 1,
+    name: document.querySelector<HTMLInputElement>('#project-name')!.value.trim() || 'Proyecto sin título',
+    width: canvas.width,
+    height: canvas.height,
+    items: savedItems,
+    lassoSelections: lassoSelections.map(selection => ({ id: selection.id, name: selection.name, points: selection.points.map(point => ({ ...point })) })),
+    activeLassoId,
+    hiddenLassoIds: Array.from(hiddenLassoIds)
+  };
+}
+function saveProject(): boolean {
   try {
-    const savedItems = items.map(item => {
-      if (item.kind !== 'image') return cloneItem(item);
-      const { image, ...rest } = item;
-      // A data URL is already portable; avoid allocating another canvas for it.
-      const imageData = image.src.startsWith('data:image/')
-        ? image.src
-        : (() => {
-            const imageCanvas = document.createElement('canvas');
-            imageCanvas.width = image.naturalWidth || image.width;
-            imageCanvas.height = image.naturalHeight || image.height;
-            if (!imageCanvas.width || !imageCanvas.height) throw new Error('Imagen sin dimensiones válidas');
-            const imageContext = imageCanvas.getContext('2d');
-            if (!imageContext) throw new Error('No se pudo preparar una imagen');
-            imageContext.drawImage(image, 0, 0);
-            return imageCanvas.toDataURL('image/png');
-          })();
-      return { ...rest, imageData };
-    });
-    const project = {
-      version: 1,
-      name: document.querySelector<HTMLInputElement>('#project-name')!.value.trim() || 'Proyecto sin título',
-      width: canvas.width,
-      height: canvas.height,
-      items: savedItems,
-      lassoSelections: lassoSelections.map(selection=>({id:selection.id,name:selection.name,points:selection.points.map(point=>({...point}))})),
-      activeLassoId,
-      hiddenLassoIds: Array.from(hiddenLassoIds)
-    };
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project));
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(buildProjectPayload()));
     document.querySelector('#save-status')!.textContent = 'Guardado en este dispositivo';
     showToast('Proyecto editable guardado');
+    return true;
   } catch (error) {
     console.error('No se pudo guardar el proyecto:', error);
     const isQuotaError = error instanceof DOMException &&
@@ -713,8 +719,53 @@ function saveProject(): void {
     showToast(isQuotaError
       ? 'No hay espacio suficiente para guardar. Prueba con imágenes más pequeñas.'
       : 'No se pudo guardar el proyecto. Comprueba las imágenes e inténtalo de nuevo.');
+    return false;
   }
 }
+document.querySelector<HTMLButtonElement>('#download-project-btn')!.addEventListener('click', () => {
+  try {
+    const payload = buildProjectPayload();
+    const serialized = JSON.stringify(payload);
+    const name = String(payload.name || 'lienzo').replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+    const blob = new Blob([serialized], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name + '.lienzo';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Copia editable descargada');
+  } catch (error) {
+    console.error('No se pudo descargar el proyecto:', error);
+    showToast('No se pudo crear el archivo del proyecto.');
+  }
+});
+document.querySelector<HTMLButtonElement>('#open-project-file-btn')!.addEventListener('click', () => {
+  document.querySelector<HTMLInputElement>('#project-file-input')!.click();
+});
+document.querySelector<HTMLInputElement>('#project-file-input')!.addEventListener('change', event => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 150 * 1024 * 1024) {
+    showToast('El archivo supera el límite de 150 MB.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result !== 'string') {
+      showToast('No se pudo leer el archivo del proyecto.');
+      return;
+    }
+    void restoreProject(true, reader.result);
+  };
+  reader.onerror = () => showToast('No se pudo leer el archivo del proyecto.');
+  reader.readAsText(file);
+});
+
 document.querySelector('#save-project-btn')!.addEventListener('click', saveProject);
 
 function createNewProject(): void {
@@ -800,11 +851,11 @@ function isValidSavedItem(value: unknown): value is Record<string, unknown> {
   return false;
 }
 
-async function restoreProject(showMessages = true): Promise<void> {
+async function restoreProject(showMessages = true, sourceText?: string): Promise<void> {
   const restoreVersion = ++projectRestoreVersion;
   photoCommitVersion++;
   try {
-    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    const raw = sourceText ?? localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw) { if (showMessages) showToast('Todavía no hay un proyecto guardado'); return; }
     const project = JSON.parse(raw) as {
       version: number; name: string; width: number; height: number; items: unknown[];
