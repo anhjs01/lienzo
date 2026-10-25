@@ -285,9 +285,7 @@ function commitPhotoAdjustments(item:ImageItem,message:string): void {
     compositeContext.moveTo(lassoAtStart[0]!.x-item.x,lassoAtStart[0]!.y-item.y);
     lassoAtStart.slice(1).forEach(point=>compositeContext.lineTo(point.x-item.x,point.y-item.y));
     compositeContext.closePath();compositeContext.clip();
-    const adjustedPreview=new Image();
-    adjustedPreview.src=dataUrl;
-    try { compositeContext.drawImage(adjustedPreview,0,0,width,height); }
+    try { compositeContext.drawImage(local,0,0,width,height); }
     catch(error) { console.error('No se pudo mezclar el ajuste local:',error);showToast('No se pudo aplicar el ajuste a la selección');return; }
     compositeContext.restore();
     try { dataUrl=composite.toDataURL('image/png'); }
