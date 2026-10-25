@@ -756,6 +756,8 @@ async function restoreProject(showMessages = true): Promise<void> {
     hiddenLassoIds = new Set(Array.isArray(project.hiddenLassoIds) ? project.hiddenLassoIds.filter(id=>typeof id==='string'&&lassoSelections.some(selection=>selection.id===id)) : []);
     lassoPoints = lassoSelections.find(selection=>selection.id===activeLassoId)?.points.map(point=>({...point})) ?? [];
     lassoMoveMode = false;
+    lassoDrawing = false;
+    lassoDragOrigin = null;
     selectedId = null;
     activeStroke = null;
     shapeStart = null;
@@ -763,6 +765,15 @@ async function restoreProject(showMessages = true): Promise<void> {
     dragStart = null;
     dragOrigin = null;
     resizing = false;
+    // Restore must also clear the visual state of controls left by the prior document.
+    const moveButton = document.querySelector<HTMLButtonElement>('#lasso-move');
+    const topMoveButton = document.querySelector<HTMLButtonElement>('#lasso-move-top');
+    [moveButton, topMoveButton].forEach(button => {
+      if (button) {
+        button.setAttribute('aria-pressed', 'false');
+        button.classList.remove('active');
+      }
+    });
     history = [items.map(cloneItem)];
     historyIndex = 0;
     const name = project.name.trim() || 'Proyecto sin título';
