@@ -190,7 +190,9 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
   const scale = photoPreviewScale;
   const width=Math.max(1,Math.round(item.width*scale)),height=Math.max(1,Math.round(item.height*scale));
   const activeMask=lassoPoints.length>=3?lassoPoints:(item.maskPoints??[]);
-  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,activeMask.map(p=>[Math.round(p.x*10)/10,Math.round(p.y*10)/10])]);
+  const firstMaskPoint=activeMask[0],lastMaskPoint=activeMask[activeMask.length-1];
+  const maskKey=activeMask.length?[activeLassoId,activeMask.length,Math.round(firstMaskPoint!.x*10)/10,Math.round(firstMaskPoint!.y*10)/10,Math.round(lastMaskPoint!.x*10)/10,Math.round(lastMaskPoint!.y*10)/10]:[];
+  const key=JSON.stringify([scale,width,height,item.filter,item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint,item.hslMix,maskKey]);
   const cached=processedImageCache.get(item);
   if(cached&&cached.image===item.image&&cached.key===key)return cached.canvas;
   const off=document.createElement('canvas');off.width=width;off.height=height;
