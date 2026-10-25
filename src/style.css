@@ -93,3 +93,15 @@
 .lasso-panel-note{margin:0 0 9px;color:#858391;font-size:9px;line-height:1.45}
 .photo-sidebar-nav{padding:13px 20px 0;margin-bottom:2px}
 .photo-sidebar-nav[hidden]{display:none!important}
+
+
+/* Herramientas fotográficas accesibles desde la barra izquierda */
+.tool-rail{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#393544 transparent}
+.rail-group{width:100%;padding:0 5px;box-sizing:border-box}
+.photo-tool-button{width:58px;min-height:51px;border:1px solid transparent;background:transparent;color:#9693a2;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;transition:background .18s,color .18s,border-color .18s}
+.photo-tool-button>span{font-size:19px;line-height:1.1;color:#b5a5f6}
+.photo-tool-button small{font:9px 'DM Sans',sans-serif}
+.photo-tool-button:hover,.photo-tool-button.active{background:#2b263c;border-color:#51446e;color:#eee9ff}
+.photo-tool-button.active>span{color:#d2c5ff}
+.rail-rule{flex-shrink:0}
+@media(max-width:820px){.tool-rail{width:70px}.photo-tool-button{width:54px;min-height:47px}}
