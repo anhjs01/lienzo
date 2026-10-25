@@ -653,9 +653,35 @@ canvas.addEventListener('dblclick', event => {
 document.querySelector('#redo')!.addEventListener('click', redo);
 window.addEventListener('keydown', event => { if (event.key === 'Escape' && lassoPoints.length) clearLassoSelections(); });
 document.querySelector('#clear')!.addEventListener('click', () => {
-  if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
-    if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
-  }
+  const hasContent = items.length > 0 || lassoSelections.length > 0 || lassoPoints.length > 0 || !!activeStroke || !!previewShape;
+  if (!hasContent) { showToast('El lienzo ya está vacío'); return; }
+  if (!window.confirm('¿Quieres limpiar todo el lienzo, incluidas las selecciones de lazo? Esta acción se puede deshacer.')) return;
+  items = [];
+  selectedId = null;
+  activeStroke = null;
+  shapeStart = null;
+  previewShape = null;
+  dragStart = null;
+  dragOrigin = null;
+  resizing = false;
+  lassoPoints = [];
+  lassoSelections = [];
+  activeLassoId = null;
+  hiddenLassoIds.clear();
+  lassoDrawing = false;
+  lassoMoveMode = false;
+  lassoDragOrigin = null;
+  activePhotoSection = null;
+  document.querySelectorAll<HTMLButtonElement>('[data-photo-jump]').forEach(button => button.classList.remove('active'));
+  const move = document.querySelector<HTMLButtonElement>('#lasso-move');
+  const topMove = document.querySelector<HTMLButtonElement>('#lasso-move-top');
+  [move, topMove].forEach(button => {
+    if (button) { button.setAttribute('aria-pressed', 'false'); button.classList.remove('active'); }
+  });
+  snapshot();
+  redraw();
+  updateHistoryButtons();
+  showToast('Lienzo y selecciones limpiados');
 });
 colorInput.addEventListener('input', () => {
   colorValue.textContent = colorInput.value.toUpperCase();
