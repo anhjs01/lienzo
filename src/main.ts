@@ -212,12 +212,23 @@ function redraw(): void {
   items.forEach(item => paintItem(item));
   if (activeStroke) paintItem(activeStroke);
   if (previewShape) { ctx.save(); ctx.globalAlpha = 0.72; paintItem(previewShape); ctx.restore(); }
-  if (lassoPoints.length > 1) { ctx.save(); ctx.beginPath(); ctx.moveTo(lassoPoints[0]!.x, lassoPoints[0]!.y); lassoPoints.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = '#7659ed'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); }
+  const allLassos = lassoSelections.length ? lassoSelections : (lassoPoints.length >= 3 ? [{id:'active',name:'Selección actual',points:lassoPoints}] : []);
+  allLassos.forEach(selection => { const active = selection.id === activeLassoId || (selection.id === 'active' && !activeLassoId); if (selection.points.length < 2) return; ctx.save(); ctx.beginPath(); ctx.moveTo(selection.points[0]!.x, selection.points[0]!.y); selection.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); if (!lassoDrawing) ctx.closePath(); ctx.strokeStyle = active ? '#7659ed' : '#44c7c0'; ctx.lineWidth = active ? 2.5 : 1.5; ctx.setLineDash(active ? [8,4] : [4,4]); ctx.stroke(); ctx.setLineDash([]); if (!lassoDrawing && active) { ctx.fillStyle = 'rgba(128,101,237,0.10)'; ctx.fill(); } ctx.restore(); });
+  renderLassoLayers();
   const selected = items.find(item => item.id === selectedId && item.visible);
   if (selected) drawSelection(selected);
   hint.classList.toggle('hidden', items.length > 0 || !!activeStroke);
   renderLayers();
   renderLayerProperties();
+}
+function syncActiveLasso(): void { const active=lassoSelections.find(selection=>selection.id===activeLassoId); if(active) active.points=lassoPoints.map(p=>({...p})); }
+function clearLassoSelections(message='Selección de lazo quitada'): void { lassoPoints=[];lassoSelections=[];activeLassoId=null;lassoDrawing=false;lassoMoveMode=false;lassoDragOrigin=null;const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed','false');b.classList.remove('active');}});redraw();showToast(message); }
+function activateLasso(id:string): void { const selection=lassoSelections.find(entry=>entry.id===id);if(!selection)return;activeLassoId=id;lassoPoints=selection.points.map(p=>({...p}));redraw(); }
+function renderLassoLayers(): void {
+ const panel=document.querySelector<HTMLDivElement>('#lasso-layer-panel');const list=document.querySelector<HTMLDivElement>('#lasso-layer-list');const actions=document.querySelector<HTMLDivElement>('#lasso-actions');
+ if(panel)panel.hidden=lassoSelections.length===0;if(actions)actions.hidden=lassoSelections.length===0;if(!list)return;list.innerHTML='';
+ lassoSelections.slice().reverse().forEach(selection=>{const row=document.createElement('button');row.type='button';row.className='lasso-layer-row'+(selection.id===activeLassoId?' selected':'');row.innerHTML='<span class="lasso-layer-icon">⌁</span><span></span>';const label=row.querySelector('span:nth-child(2)');if(label)label.textContent=selection.name;row.title='Seleccionar '+selection.name;row.addEventListener('click',()=>activateLasso(selection.id));list.append(row);});
+ const move=document.querySelector<HTMLButtonElement>('#lasso-move');const topMove=document.querySelector<HTMLButtonElement>('#lasso-move-top');[move,topMove].forEach(b=>{if(b){b.setAttribute('aria-pressed',String(lassoMoveMode));b.classList.toggle('active',lassoMoveMode);}});
 }
 function snapshot(): void {
   history = history.slice(0, historyIndex + 1);
