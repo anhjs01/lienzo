@@ -170,7 +170,11 @@ function renderHslImage(item:ImageItem):HTMLCanvasElement{
     ss=Math.max(0,Math.min(1,ss*(saturation+vibrance*(1-ss))));
     let dh=0,ds=0,dl=0;
     for(const c of cs){const v=item.hslMix?.[c.key];if(!v)continue;const w=Math.max(0,1-hueDistance(h,c.center)/c.range);dh+=v.h*1.8*w;ds+=v.s/100*w;dl+=v.l/100*w;}
-    const rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));
+    let rgb=hslToRgb((h+dh+360)%360,Math.max(0,Math.min(1,ss*(1+ds))),Math.max(0,Math.min(1,l+dl*.45)));
+    if(item.filter==='grayscale'){const y=.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];rgb=[y,y,y];}
+    else if(item.filter==='sepia'){const [rr,gg,bb]=rgb;rgb=[Math.min(255,rr*.393+gg*.769+bb*.189),Math.min(255,rr*.349+gg*.686+bb*.168),Math.min(255,rr*.272+gg*.534+bb*.131)];}
+    else if(item.filter==='contrast'){rgb=rgb.map(v=>Math.max(0,Math.min(255,(v-128)*1.25+128))) as [number,number,number];}
+    else if(item.filter==='saturate'){const [hh,sss,ll]=rgbToHsl(rgb[0],rgb[1],rgb[2]);rgb=hslToRgb(hh,Math.min(1,sss*1.6),ll);}
     data[i]=rgb[0];data[i+1]=rgb[1];data[i+2]=rgb[2];
   }
   oc.putImageData(imageData,0,0);return off;
@@ -196,9 +200,9 @@ function paintItem(item: Item, target: CanvasRenderingContext2D = ctx): void {
     target.fillStyle = item.color; target.font = `600 ${item.size}px sans-serif`; target.textBaseline = 'top';
     item.text.split('\n').forEach((line, i) => target.fillText(line, item.at.x, item.at.y + i * item.size * 1.25));
   } else if (item.image.complete) {
-    const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'grayscale(1)', sepia: 'sepia(1)', contrast: 'contrast(1.25)', saturate: 'saturate(1.6)', blur: 'blur(2px)' };
+    const filters: Record<ImageFilter, string> = { none: 'none', grayscale: 'none', sepia: 'none', contrast: 'none', saturate: 'none', blur: 'blur(2px)' };
     target.filter = filters[item.filter] ?? 'none';
-    const hasAdjustments = [item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint].some(v => typeof v === 'number' && v !== 0) || (!!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0)));
+    const hasAdjustments = (item.filter !== 'none' && item.filter !== 'blur') || [item.exposure,item.contrastAmount,item.saturationAmount,item.warmth,item.highlights,item.shadows,item.whites,item.blacks,item.vibrance,item.tint].some(v => typeof v === 'number' && v !== 0) || (!!item.hslMix && Object.values(item.hslMix).some(v => !!v && (v.h !== 0 || v.s !== 0 || v.l !== 0)));
     if (hasAdjustments) target.drawImage(renderHslImage(item), item.x, item.y, item.width, item.height); else target.drawImage(item.image, item.x, item.y, item.width, item.height);
     if ((item.vignette ?? 0) > 0) { const amount = (item.vignette ?? 0) / 100; const gradient = target.createRadialGradient(item.x + item.width / 2, item.y + item.height / 2, Math.min(item.width, item.height) * 0.12, item.x + item.width / 2, item.y + item.height / 2, Math.max(item.width, item.height) * 0.72); gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(1, `rgba(0,0,0,${amount * 0.72})`); target.save(); target.fillStyle = gradient; target.fillRect(item.x, item.y, item.width, item.height); target.restore(); }
     if ((item.grain ?? 0) > 0) { const amount = (item.grain ?? 0) / 100; const step = Math.max(3, Math.round(7 - amount * 4)); target.save(); target.globalAlpha *= amount * 0.22; for (let y = item.y; y < item.y + item.height; y += step) for (let x = item.x; x < item.x + item.width; x += step) { const noise = ((Math.imul(Math.floor(x) + 1, 374761393) ^ Math.imul(Math.floor(y) + 1, 668265263)) >>> 0) % 2 ? 255 : 0; target.fillStyle = `rgb(${noise},${noise},${noise})`; target.fillRect(x, y, step * 0.45, step * 0.45); } target.restore(); }
