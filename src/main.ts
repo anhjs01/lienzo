@@ -129,7 +129,7 @@ let dragOrigin: Item | null = null;
 let hasMoved = false;
 let resizing = false;
 function makeMeta(): LayerMeta { return { id: crypto.randomUUID(), opacity: 1, visible: true }; }
-function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
+function cloneItem(item: Item): Item { return { ...item, ...(item.kind === 'image' && item.hslMix ? { hslMix: Object.fromEntries(Object.entries(item.hslMix).map(([k,v]) => [k, v ? { ...v } : v])) as ImageItem['hslMix'] } : {}), ...(item.kind === 'stroke' ? { points: item.points.map(p => ({ ...p })) } : {}), ...(item.kind === 'shape' ? { from: { ...item.from }, to: { ...item.to } } : {}), ...(item.kind === 'text' ? { at: { ...item.at } } : {}) }; }
 let activeStroke: Stroke | null = null;
 let shapeStart: Point | null = null;
 let previewShape: Shape | null = null;
@@ -275,6 +275,7 @@ function renderLayerProperties(): void {
   if (item.kind === 'image') {
     const filterInput = controls.querySelector<HTMLSelectElement>('#image-filter')!;
     if (document.activeElement !== filterInput) filterInput.value = item.filter;
+    if (item.kind === 'image') document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => { const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const value=item.hslMix?.[color]?.[axis]??0; input.value=String(value); const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(value>0?'+':'')+value; });
     const photoValues: Record<string, number> = { exposure: item.exposure ?? 0, contrastAmount: item.contrastAmount ?? 0, saturationAmount: item.saturationAmount ?? 0, warmth: item.warmth ?? 0, highlights: item.highlights ?? 0, shadows: item.shadows ?? 0, whites: item.whites ?? 0, blacks: item.blacks ?? 0, vibrance: item.vibrance ?? 0, tint: item.tint ?? 0, vignette: item.vignette ?? 0, grain: item.grain ?? 0 };
     Object.entries(photoValues).forEach(([key, value]) => { const input = controls.querySelector<HTMLInputElement>(`[data-photo-adjust="${key}"]`); const output = controls.querySelector<HTMLOutputElement>(`#photo-${({contrastAmount:'contrast', saturationAmount:'saturation', warmth:'warmth', highlights:'highlights', shadows:'shadows', whites:'whites', blacks:'blacks', vibrance:'vibrance', tint:'tint', vignette:'vignette', grain:'grain'} as Record<string,string>)[key] ?? key}-value`); if (input && document.activeElement !== input) input.value = String(value); if (output) output.value = `${value > 0 ? '+' : ''}${value}`; });
   }
@@ -413,6 +414,10 @@ document.querySelector<HTMLInputElement>('#shape-fill')!.addEventListener('chang
   if (!item || item.kind !== 'shape' || item.shape === 'line') return;
   item.fill = (event.currentTarget as HTMLInputElement).checked;
   snapshot(); redraw(); showToast(item.fill ? 'Relleno activado' : 'Relleno desactivado');
+});
+document.querySelectorAll<HTMLInputElement>('[data-hsl-color]').forEach(input => {
+  input.addEventListener('input', () => { const item=items.find(candidate=>candidate.id===selectedId); if(!item||item.kind!=='image')return; const color=input.dataset.hslColor as HslColor; const axis=input.dataset.hslAxis as 'h'|'s'|'l'; const current=item.hslMix?.[color]??{h:0,s:0,l:0}; item.hslMix={...(item.hslMix??{}),[color]:{...current,[axis]:Number(input.value)}}; const output=document.querySelector<HTMLOutputElement>('#hsl-'+color+'-'+axis); if(output)output.value=(Number(input.value)>0?'+':'')+input.value; redraw(); });
+  input.addEventListener('change',()=>{const item=items.find(candidate=>candidate.id===selectedId);if(item?.kind==='image'){snapshot();redraw();}});
 });
 document.querySelectorAll<HTMLInputElement>('[data-photo-adjust]').forEach(input => {
   input.addEventListener('input', () => {
