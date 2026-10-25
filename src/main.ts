@@ -411,6 +411,7 @@ canvas.addEventListener('dblclick', event => {
   selectedId = item.id; editSelectedText();
 });
 document.querySelector('#redo')!.addEventListener('click', redo);
+window.addEventListener('keydown', event => { if (event.key === 'Escape' && lassoPoints.length) { lassoPoints = []; lassoDrawing = false; redraw(); showToast('Selección de lazo quitada'); } });
 document.querySelector('#clear')!.addEventListener('click', () => {
   if (!items.length || window.confirm('¿Quieres limpiar todo el lienzo? Esta acción se puede deshacer.')) {
     if (items.length) { items = []; snapshot(); redraw(); updateHistoryButtons(); showToast('Lienzo limpio'); }
